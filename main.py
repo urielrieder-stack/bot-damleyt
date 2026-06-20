@@ -3,7 +3,6 @@ import sys
 import time
 import requests
 import threading
-import random
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # INSTALACIÓN AUTOMÁTICA DE DEPENDENCIAS CRÍTICAS
@@ -48,7 +47,7 @@ def iniciar_servidor_render():
     server.serve_forever()
 
 # =====================================================================
-# 🌐 MOTOR DE RECOLECCIÓN FASE 3.5: FILTRADO ESTRICTO DE PARTIDOS REALES
+# 🌐 MOTOR DE RECOLECCIÓN FASE 3.5: EXTRACCIÓN ESTRICTA EN TIEMPO REAL
 # =====================================================================
 def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
     url_fixtures = "https://v3.football.api-sports.io/fixtures"
@@ -57,15 +56,13 @@ def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
         "x-rapidapi-host": "v3.football.api-sports.io"
     }
     
-    if not busqueda_usuario:
-        busqueda_usuario = "Países Bajos vs Suecia"
-
     texto_limpio = busqueda_usuario.lower().replace("vs", " ").replace("-", " ")
     palabras = [p.strip() for p in texto_limpio.split(" ") if p.strip() and len(p.strip()) > 1]
     
     if not palabras:
-        palabras = ["netherlands"]
-    
+        return None
+
+    # Forzar la consulta a los partidos live o de la temporada actual
     params = {"live": "all"} if es_live else {"season": "2026"}
     
     try:
@@ -77,6 +74,7 @@ def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
                 home_team = item["teams"]["home"]["name"].lower()
                 away_team = item["teams"]["away"]["name"].lower()
                 
+                # Búsqueda estricta por coincidencia de palabras clave
                 match_local = any(p in home_team for p in palabras)
                 match_visita = any(p in away_team for p in palabras)
                 
@@ -86,81 +84,28 @@ def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
                     goals = item.get("goals", {})
                     status = fixture_info.get("status", {})
                     
-                    nombre_estadio = venue_info.get("name")
-                    ciudad_estadio = venue_info.get("city")
-                    arbitro_assigned = fixture_info.get("referee")
+                    nombre_estadio = venue_info.get("name") or "Estadio por confirmar"
+                    ciudad_estadio = venue_info.get("city") or ""
+                    arbitro_assigned = fixture_info.get("referee") or "Árbitro por confirmar"
                     
-                    if nombre_estadio and str(nombre_estadio).strip() and nombre_estadio != "None":
-                        estadio_final = f"{nombre_estadio} ({ciudad_estadio})" if ciudad_estadio else nombre_estadio
-                    else:
-                        estadios_mundial = ["MetLife Stadium (New Jersey)", "SoFi Stadium (Los Angeles)", "Estadio Azteca (CDMX)", "Hard Rock Stadium (Miami)", "BC Place (Vancouver)", "Estadio BBVA (Monterrey)"]
-                        estadio_final = random.choice(estadios_mundial)
-                        
-                    if arbitro_assigned and str(arbitro_assigned).strip() and arbitro_assigned != "None":
-                        arbitro_final = str(arbitro_assigned).split(',')[0].strip()
-                    else:
-                        arbitros_elite = ["Szymon Marciniak (Polonia)", "César Arturo Ramos (México)", "Wilmar Roldán (Colombia)", "Michael Oliver (Inglaterra)", "Jesús Valenzuela (Venezuela)", "Danny Makkelie (Países Bajos)"]
-                        arbitro_final = random.choice(arbitros_elite)
+                    estadio_final = f"{nombre_estadio} ({ciudad_estadio})" if ciudad_estadio else nombre_estadio
+                    arbitro_final = str(arbitro_assigned).split(',')[0].strip()
                     
-                    if "costa de marfil" in busqueda_usuario.lower() or "ivory coast" in busqueda_usuario.lower() or "alemania" in busqueda_usuario.lower() or "germany" in busqueda_usuario.lower():
-                        return {
-                            "equipo_local": "Costa de Marfil",
-                            "equipo_visitante": "Alemania",
-                            "estadio": estadio_final,
-                            "arbitro": arbitro_final,
-                            "en_vivo": True,
-                            "goles_local": 4,
-                            "goles_visitante": 1,
-                            "minuto": 49,
-                            "status_txt": "En Progreso"
-                        }
-                        
                     return {
                         "equipo_local": item["teams"]["home"]["name"],
                         "equipo_visitante": item["teams"]["away"]["name"],
                         "estadio": estadio_final,
                         "arbitro": arbitro_final,
-                        "en_vivo": es_live,
-                        "goles_local": goals.get("home", 0) if goals.get("home") is not None else 0,
-                        "goles_visitante": goals.get("away", 0) if goals.get("away") is not None else 0,
-                        "minuto": status.get("elapsed", 0) or 0,
-                        "status_txt": status.get("long", "Por Jugar")
+                        "en_vivo": True if status.get("short") in ["1H", "HT", "2H", "ET", "P"] else es_live,
+                        "goles_local": goals.get("home") if goals.get("home") is not None else 0,
+                        "goles_visitante": goals.get("away") if goals.get("away") is not None else 0,
+                        "minuto": status.get("elapsed") or 0,
+                        "status_txt": status.get("long", "En Progreso")
                     }
     except Exception as e:
-        print(f"⚠️ Error en filtrado estricto: {e}")
+        print(f"⚠️ Error en API de Fútbol: {e}")
         
-    arbitros_elite = ["Szymon Marciniak (Polonia)", "César Arturo Ramos (México)", "Wilmar Roldán (Colombia)", "Michael Oliver (Inglaterra)", "Jesús Valenzuela (Venezuela)", "Facundo Tello (Argentina)"]
-    estadios_mundial = ["Estadio Azteca (CDMX)", "SoFi Stadium (Los Angeles)", "MetLife Stadium (New Jersey)", "Hard Rock Stadium (Miami)", "Estadio BBVA (Monterrey)", "Estadio Akron (Guadalajara)", "Lumen Field (Seattle)"]
-    
-    partido_split = busqueda_usuario.replace("vs", "VS").split("VS")
-    equipo_a = partido_split[0].strip() if len(partido_split) > 0 else "Países Bajos"
-    equipo_b = partido_split[1].strip() if len(partido_split) > 1 else "Suecia"
-    
-    gl = 0
-    gv = 0
-    min_real = 75
-    
-    if "paises bajos" in busqueda_usuario.lower() or "sweden" in busqueda_usuario.lower() or "suecia" in busqueda_usuario.lower():
-        gl = 4
-        gv = 1
-    elif "costa de marfil" in busqueda_usuario.lower() or "ivory coast" in busqueda_usuario.lower() or "alemania" in busqueda_usuario.lower() or "germany" in busqueda_usuario.lower():
-        equipo_a = "Costa de Marfil"
-        equipo_b = "Alemania"
-        gl = 4
-        gv = 1
-        min_real = 49
-    
-    return {
-        "equipo_local": equipo_a,
-        "equipo_visitante": equipo_b,
-        "estadio": random.choice(estadios_mundial),
-        "arbitro": random.choice(arbitros_elite),
-        "en_vivo": es_live,
-        "goles_local": gl,
-        "goles_visitante": gv,
-        "minuto": min_real,
-        "status_txt": "En Progreso"
-    }
+    return None
 
 # =====================================================================
 # 1. BIENVENIDA OFICIAL EXCLUSIVA
@@ -211,13 +156,21 @@ def ejecutar_auditoria_core(message, partido_usuario):
     bot.reply_to(message, f"Procesando matriz táctica avanzada (xG, Presión Atmosférica, Fatiga e Historial Ponderado)... ⚡")
     
     datos_api = obtener_datos_reales_partido(partido_usuario, es_live=False)
+    
+    if not datos_api:
+        # Estructura limpia basada puramente en el input si la API no encuentra la programación de 2026
+        partido_split = partido_usuario.replace("vs", "VS").split("VS")
+        eq_a = partido_split[0].strip() if len(partido_split) > 0 else "Equipo Local"
+        eq_b = partido_split[1].strip() if len(partido_split) > 1 else "Equipo Visitante"
+        datos_api = {
+            "equipo_local": eq_a, "equipo_visitante": eq_b,
+            "estadio": "Estadio Internacional", "arbitro": "Árbitro Élite FIFA"
+        }
+    
     equipo_a = datos_api["equipo_local"]
     equipo_b = datos_api["equipo_visitante"]
     estadio_real = datos_api["estadio"]
     arbitro_real = datos_api["arbitro"]
-
-    factor_aleatorio_goles = random.choice(["ritmo de contraataques de alta velocidad", "repliegue defensivo asfixiante", "transiciones rápidas por carriles internos"])
-    factor_aleatorio_esquinas = random.choice(["bloqueo sistemático de centros laterales", "ataque continuo buscando línea de fondo"])
 
     prompt_ia = (
         f"Actúa como un algoritmo avanzado de analítica deportiva operando en este año 2026.\n"
@@ -226,11 +179,10 @@ def ejecutar_auditoria_core(message, partido_usuario):
         f"- Sede/Estadio: {estadio_real}\n"
         f"- Árbitro Asignado: {arbitro_real}\n\n"
         f"🚨 INSTRUCCIÓN DE VOLATILIDAD Y DINAMISMO EXTREMO:\n"
-        f"PROHIBIDO usar nombres por defecto fijos o inventados como Antony Taylor de forma repetitiva. Debes usar exactamente el árbitro entrante: {arbitro_real} y la sede real: {estadio_real}.\n"
-        f"Calcula las probabilidades de forma asimétrica adaptándote al factor táctico: {factor_aleatorio_goles} y {factor_aleatorio_esquinas}.\n"
+        f"PROHIBIDO inventar árbitros o sedes de forma repetitiva. Debes usar exactamente lo provisto: {arbitro_real} y {estadio_real}.\n"
         f"El mercado de 'Primer Tiempo (45 Minutos)' y los 'Córners Totales' deben fluctuar libremente reflejando tendencias reales de Over o Under según corresponda.\n\n"
         f"🚨 FILTRO REGENERATIVO OBLIGATORIO 2026:\n"
-        f"Prohibido basar análisis o mencionar futbolistas viejos o fuera del proceso actual de las selecciones. Usa plantillas jóvenes y vigentes de este año 2026.\n\n"
+        f"Prohibido basar análisis o mencionar futbolistas viejos o fuera del proceso actual. Usa plantillas jóvenes y vigentes de este año 2026.\n\n"
         f"REGLAS OBLIGATORIAS DE DISEÑO, MÉTRICAS Y SUITE COMPLETA:\n"
         f"1. PROHIBIDO usar '1H'. Escribe siempre 'Primer Tiempo (45 Minutos)'.\n"
         f"2. CUADRE PERFECTO DEL 100%: En los mercados Over/Under muestra ambos porcentajes y la suma debe dar exactamente 100%.\n"
@@ -251,7 +203,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
         f"- Goles Esperados (Proyección xG vs xGA):\n"
         f"  * {equipo_a}: [X.XX xG] | {equipo_b}: [X.XX xG]\n"
         f"- Auditoría de Bloque Táctico y Presión:\n"
-        f"  * {equipo_a}: [Bloque Alto/Medio/Bajo] | {equipo_b}: [Bloque Alto/Medio/Bajo]\n"
+        f"  * {equipo_a}: [Bloque Táctico] | {equipo_b}: [Bloque Táctico]\n"
         f"- Métricas de Posesión Efectiva (Último Tercio):\n"
         f"  * Dominio Territorial: [Barra de texto tipo ████▒▒▒▒] {equipo_a} XX% vs XX% {equipo_b}\n"
         f"- Mapeo de Transiciones Rápidas y Contraataques: [1 renglón táctico]\n\n"
@@ -271,7 +223,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
         f"  * Over [8.5]: [Recuadro] [XX]% | Under [8.5]: [Recuadro] [XX]%\n"
         f"  * Desglose: {equipo_a}: X-Y corners / {equipo_b}: X-Y corners\n\n"
         f"🟨 **TARJETAS TOTALES Y ÁRBITRO:**\n"
-        f"- Árbitro: {arbitro_real} | Perfil Histórico: [Perfil de tarjetas]\n"
+        f"- Árbitro: {arbitro_real}\n"
         f"  * Over [3.5]: [Recuadro] [XX]% | Under [3.5]: [Recuadro] [XX]%\n"
         f"  * Justificación: [1 renglón táctico]\n\n"
         f"🎯 **EFECTIVIDAD EN MINUTOS CRÍTICOS:**\n"
@@ -292,8 +244,8 @@ def ejecutar_auditoria_core(message, partido_usuario):
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
+        requests_response = requests.post(url, headers=headers, json=payload, timeout=15)
+        data = requests_response.json()
         if 'choices' in data:
             bot.reply_to(message, data['choices'][0]['message']['content'])
     except Exception as e:
@@ -323,11 +275,7 @@ def procesar_auditoria_jugador_core(message):
         f"Evalúa con absoluta precisión el perfil, rol y estadísticas del jugador: {datos}.\n\n"
         f"🚨 FILTROS OBLIGATORIOS DE CONTEXTO GLOBAL MUNDIAL 2026:\n"
         f"1. AUDITORÍA DE CONVOCATORIA INTERNACIONAL: Todo jugador consultado se asume que forma parte activa o está firmemente en el radar estratégico.\n"
-        f"2. CONTROL ESTRICTO DE POSICIÓN TÁCTICA REAL:\n"
-        f"   - PORTEROS: Rol 'Portero'. Tiros a puerta: 0% o 1% máximo.\n"
-        f"   - DEFENSAS/LATERALES: Rol 'Defensa Central' o 'Lateral'. Tiros a puerta bajos.\n"
-        f"   - MEDIOCAMPISTAS: Rol 'Mediocampista (MC / MCD)' y tiros de media distancia.\n"
-        f"   - DELANTEROS/EXTREMOS: Rol 'Delantero Centro' o 'Extremo'. Probabilidades de ataque real.\n\n"
+        f"2. CONTROL ESTRICTO DE POSICIÓN TÁCTICA REAL.\n\n"
         f"🚨 REGLAS DE RECUADROS VISUALES POR PORCENTAJE:\n"
         f"   - Si la opción tiene >70%: Pon el recuadro verde 🟩.\n"
         f"   - Si la opción tiene entre 50% y 70%: Pon el recuadro amarillo 🟨.\n"
@@ -360,15 +308,15 @@ def procesar_auditoria_jugador_core(message):
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
+        requests_response = requests.post(url, headers=headers, json=payload, timeout=15)
+        data = requests_response.json()
         if 'choices' in data:
             bot.reply_to(message, data['choices'][0]['message']['content'])
     except Exception as e:
         bot.reply_to(message, f"Aviso del sistema: Error al procesar métricas del jugador. {e}")
 
 # =====================================================================
-# 4. 🛡️ SECCIÓN INTERACTIVA: COBERTURA EN VIVO (MÓDULO CORREGIDO RAÍZ)
+# 4. 🛡️ SECCIÓN INTERACTIVA: COBERTURA EN VIVO (MÓDULO PURGADO DE INVENTOS)
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🛡️ Cobertura en Vivo")
 def solicitar_cobertura_partido(message):
@@ -384,9 +332,20 @@ def solicitar_cobertura_partido(message):
 
 def ejecutar_cobertura_live_core(message):
     partido_usuario = message.text.strip()
-    bot.reply_to(message, f"Buscando estado en vivo y calculando contrapicks de cobertura para: **{partido_usuario}**... ⚡")
+    bot.reply_to(message, f"Buscando estado en vivo en la API de Fútbol para: **{partido_usuario}**... ⚡")
     
     datos_api = obtener_datos_reales_partido(partido_usuario, es_live=True)
+    
+    # CONTROL ESTRICTO: Si la API de fútbol no devuelve nada en tiempo real, se frena el análisis. PROHIBIDO INVENTAR.
+    if not datos_api:
+        bot.send_message(
+            message.chat.id,
+            f"❌ **MÓDULO LIVE: SIN DATOS EN TIEMPO REAL**\n"
+            f"La API de Fútbol no reportó ningún partido en progreso activo que coincida con '{partido_usuario}'.\n"
+            f"Asegúrese de escribir bien los nombres o que el partido ya haya comenzado."
+        )
+        return
+
     eq_a = datos_api["equipo_local"]
     eq_b = datos_api["equipo_visitante"]
     goles_a = datos_api["goles_local"]
@@ -396,26 +355,26 @@ def ejecutar_cobertura_live_core(message):
 
     prompt_cobertura = (
         f"Actúa como un algoritmo matemático avanzado de arbitraje deportivo y hedging en tiempo real (Año 2026).\n"
-        f"Genera una guía de cobertura basada exclusivamente en estos parámetros dinámicos de entrada:\n"
+        f"Genera una guía de cobertura basada EXCLUSIVAMENTE en estos parámetros dinámicos EXTRAÍDOS DE LA API DE FÚTBOL:\n"
         f"- Partido: {eq_a} vs {eq_b}\n"
-        f"- Marcador Real: {eq_a} {goles_a} - {goles_b} {eq_b}\n"
-        f"- Minuto Exacto: Minuto {minuto_actual} ({estado_txt})\n\n"
-        f"🚨 REGLAS ANALÍTICAS CRÍTICAS (PROHIBIDO GENERAR TEXTOS FIJOS O EDITAR EL MARCADOR):\n"
-        f"1. El partido se encuentra exactamente en el minuto {minuto_actual} con un marcador real de {goles_a} - {goles_b}. El marcador NO es un empate, {eq_a} tiene una ventaja real.\n"
-        f"2. Queda ESTRICTAMENTE PROHIBIDO replicar de forma genérica plantillas viejas que mencionen el minuto 75 o marcadores 0-0 de empates ficticios.\n"
-        f"3. Adapta el análisis técnico a un renglón indicando matemáticamente cómo la ventaja de {goles_a} a {goles_b} impacta las líneas iniciales.\n\n"
-        f"Genera exactamente el bloque premium con la información mapeada dinámicamente:\n\n"
+        f"- Marcador Extraído: {eq_a} {goles_a} - {goles_b} {eq_b}\n"
+        f"- Minuto Extraído: Minuto {minuto_actual} ({estado_txt})\n\n"
+        f"🚨 REGLAS MATEMÁTICAS SIN ERRORES (PROHIBIDO AGREGAR CONTENIDO DE MEMORIA ANTERIOR):\n"
+        f"1. Procesa únicamente la ventaja o igualdad real actual ({goles_a} a {goles_b}) en el minuto {minuto_actual}.\n"
+        f"2. Queda ESTRICTAMENTE PROHIBIDO usar plantillas estáticas con marcadores 4-1 o minutos 75 de forma fija.\n"
+        f"3. Adapta el análisis técnico a un renglón indicando matemáticamente cómo este marcador impacta las líneas iniciales.\n\n"
+        f"Genera exactamente el bloque premium con la información real mapeada:\n\n"
         f"🛡️ **Sugerencias de Cobertura (Hedging Tool) - Motor Damleyt Strategy**\n"
         f"──────────────────────────────────────────────────\n"
         f"🏟️ **Partido Monitoreado:** {eq_a} vs {eq_b}\n"
         f"⏱️ **Estado Real en Vivo:** Minuto {minuto_actual} | Marcador Actual: {goles_a} - {goles_b} ({estado_txt})\n\n"
         f"🎯 **ESTRATEGIA DE COBERTURA INMEDIATA:**\n"
         f"- Si tu línea inicial era favor de {eq_a}:\n"
-        f"  * 🟢 Pick de Cobertura Live: [Línea táctica real para resguardar la victoria de {goles_a}-{goles_b}]\n"
-        f"  * 📊 Porcentaje de Capital a Reinvertir: [XX]% para proteger la ganancia.\n\n"
+        f"  * 🟢 Pick de Cobertura Live: [Línea táctica ajustada al marcador real de {goles_a}-{goles_b}]\n"
+        f"  * 📊 Porcentaje de Capital a Reinvertir: [XX]% para resguardar capital.\n\n"
         f"- Si tu línea inicial era favor de {eq_b} o mercados alternos:\n"
-        f"  * 🔵 Pick de Cobertura Alterno: [Pick de contrapeso adaptado a la desventaja de {goles_b} goles]\n\n"
-        f"💡 *Análisis Técnico:* [Análisis de 1 renglón real enfocado puramente en la ventaja actual de {goles_a} a {goles_b} al minuto {minuto_actual}].\n"
+        f"  * 🔵 Pick de Cobertura Alterno: [Pick de contrapeso adaptado al estado real del partido]\n\n"
+        f"💡 *Análisis Técnico:* [Análisis de 1 renglón enfocado puramente en el desarrollo actual de {goles_a} a {goles_b}].\n"
         f"──────────────────────────────────────────────────"
     )
 
@@ -424,13 +383,13 @@ def ejecutar_cobertura_live_core(message):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_cobertura}],
-        "temperature": 0.05,  # Temperatura casi a cero absoluto para destruir cualquier remanente creativo o de memoria previa
+        "temperature": 0.0,  # Cero absoluto para matar cualquier alucinación creativa
         "max_tokens": 700
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
+        requests_response = requests.post(url, headers=headers, json=payload, timeout=15)
+        data = requests_response.json()
         if 'choices' in data:
             bot.send_message(message.chat.id, data['choices'][0]['message']['content'])
     except Exception as e:
@@ -455,11 +414,11 @@ def menu_parley(message):
 @bot.message_handler(func=lambda message: message.text in ["🟩 Bajo Riesgo (3-8 Opciones)", "🟨 Medio Riesgo (3-8 Opciones)", "🟥 Alto Riesgo (3-8 Opciones)"])
 def procesar_parley(message):
     riesgo = "BAJO" if "Bajo" in message.text else "MEDIO" if "Medio" in message.text else "ALTO"
-    msg_espera = bot.send_message(message.chat.id, f"⚡ Consultando matriz de datos para estruturar Parley de **{riesgo} RIESGO**...")
+    msg_espera = bot.send_message(message.chat.id, f"⚡ Consultando matriz de datos para estructurar Parley de **{riesgo} RIESGO**...")
 
     prompt_parley = (
         f"Actúa como un auditor experto en apuestas deportivas operando en este año 2026.\n"
-        f"Genera un Parley sugerido basado únicamente en partidos reales de la Copa del Mundo con riesgo {riesgo}.\n\n"
+        f"Genera un Parley sugerido basado únicamente en partidos reales con riesgo {riesgo}.\n\n"
         f"Formateo de salida:\n\n"
         f"📊 **PARLEY SUGERIDO - RIESGO {riesgo}**\n"
         f"-----------------------------------------\n"
@@ -480,8 +439,8 @@ def procesar_parley(message):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
+        requests_response = requests.post(url, headers=headers, json=payload, timeout=15)
+        data = requests_response.json()
         if 'choices' in data:
             texto_parley = data['choices'][0]['message']['content']
             bot.delete_message(message.chat.id, msg_espera.message_id)
@@ -532,8 +491,8 @@ def simular_ticket_apuesta(message):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
+        requests_response = requests.post(url, headers=headers, json=payload, timeout=15)
+        data = requests_response.json()
         if 'choices' in data:
             bot.send_message(message.chat.id, data['choices'][0]['message']['content'])
     except Exception as e:
@@ -580,8 +539,8 @@ def simular_escenarios_live(message):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
+        requests_response = requests.post(url, headers=headers, json=payload, timeout=15)
+        data = requests_response.json()
         if 'choices' in data:
             bot.send_message(message.chat.id, data['choices'][0]['message']['content'])
     except Exception as e:
@@ -625,8 +584,8 @@ def enviar_alertas_prematch(message):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
+        requests_response = requests.post(url, headers=headers, json=payload, timeout=15)
+        data = requests_response.json()
         if 'choices' in data:
             bot.send_message(message.chat.id, data['choices'][0]['message']['content'])
     except Exception as e:
