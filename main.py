@@ -16,7 +16,7 @@ except ImportError:
 from telebot import types
 
 # =====================================================================
-# 🔑 SECCIÓN DE APIS - JALA DESDE RENDER O MANUALMENTE AQUÍ
+# 🔑 SECCIÓN DE APIS - CONFIGURACIÓN DE ENTORNO
 # =====================================================================
 TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "8945180693:AAG7MxrAke7a97pztZJ7zpkYZzZX3IWiVGM"
 API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "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"
@@ -47,7 +47,7 @@ def iniciar_servidor_render():
     server.serve_forever()
 
 # =====================================================================
-# 🌐 MOTOR DE RECOLECCIÓN FASE 3.5: EXTRACCIÓN ESTRICTA EN TIEMPO REAL
+# 🌐 MOTOR DE RECOLECCIÓN: EXTRACCIÓN ESTRICTA DE API EN TIEMPO REAL
 # =====================================================================
 def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
     url_fixtures = "https://v3.football.api-sports.io/fixtures"
@@ -62,19 +62,20 @@ def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
     if not palabras:
         return None
 
-    # Forzar la consulta a los partidos live o de la temporada actual
+    # Parámetros estrictos: Live filtra solo partidos activos, sino busca en la temporada 2026
     params = {"live": "all"} if es_live else {"season": "2026"}
     
     try:
-        response = requests.get(url_fixtures, headers=headers, params=params, timeout=10)
+        response = requests.get(url_fixtures, headers=headers, params=params, timeout=12)
+        if response.status_code != 200:
+            return None
+            
         data = response.json()
-        
         if data.get("response"):
             for item in data["response"]:
                 home_team = item["teams"]["home"]["name"].lower()
                 away_team = item["teams"]["away"]["name"].lower()
                 
-                # Búsqueda estricta por coincidencia de palabras clave
                 match_local = any(p in home_team for p in palabras)
                 match_visita = any(p in away_team for p in palabras)
                 
@@ -84,9 +85,9 @@ def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
                     goals = item.get("goals", {})
                     status = fixture_info.get("status", {})
                     
-                    nombre_estadio = venue_info.get("name") or "Estadio por confirmar"
+                    nombre_estadio = venue_info.get("name") or "Estadio Oficial No Reportado"
                     ciudad_estadio = venue_info.get("city") or ""
-                    arbitro_assigned = fixture_info.get("referee") or "Árbitro por confirmar"
+                    arbitro_assigned = fixture_info.get("referee") or "Cuerpo Arbitral por Confirmar"
                     
                     estadio_final = f"{nombre_estadio} ({ciudad_estadio})" if ciudad_estadio else nombre_estadio
                     arbitro_final = str(arbitro_assigned).split(',')[0].strip()
@@ -103,7 +104,7 @@ def obtener_datos_reales_partido(busqueda_usuario, es_live=False):
                         "status_txt": status.get("long", "En Progreso")
                     }
     except Exception as e:
-        print(f"⚠️ Error en API de Fútbol: {e}")
+        print(f"⚠️ Error Crítico en API de Fútbol: {e}")
         
     return None
 
@@ -139,7 +140,7 @@ Se han cargado los 15 módulos analíticos de alta gama (Estadísticas xG, Bloqu
     bot.send_message(message.chat.id, mensaje, reply_markup=markup)
 
 # =====================================================================
-# 2. SECCIÓN: ANALIZAR PARTIDO
+# 2. SECCIÓN: ANALIZAR PARTIDO (PRE-MATCH / ESTRATÉGICO)
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "⚽ Analizar Partido")
 def solicitar_partido(message):
@@ -158,14 +159,11 @@ def ejecutar_auditoria_core(message, partido_usuario):
     datos_api = obtener_datos_reales_partido(partido_usuario, es_live=False)
     
     if not datos_api:
-        # Estructura limpia basada puramente en el input si la API no encuentra la programación de 2026
-        partido_split = partido_usuario.replace("vs", "VS").split("VS")
-        eq_a = partido_split[0].strip() if len(partido_split) > 0 else "Equipo Local"
-        eq_b = partido_split[1].strip() if len(partido_split) > 1 else "Equipo Visitante"
-        datos_api = {
-            "equipo_local": eq_a, "equipo_visitante": eq_b,
-            "estadio": "Estadio Internacional", "arbitro": "Árbitro Élite FIFA"
-        }
+        bot.send_message(
+            message.chat.id,
+            f"❌ **ERROR DE AUDITORÍA:** No se encontraron registros de programación ni datos válidos para '{partido_usuario}' en la API de Fútbol para la temporada actual. Verifique el nombre e intente de nuevo."
+        )
+        return
     
     equipo_a = datos_api["equipo_local"]
     equipo_b = datos_api["equipo_visitante"]
@@ -174,16 +172,16 @@ def ejecutar_auditoria_core(message, partido_usuario):
 
     prompt_ia = (
         f"Actúa como un algoritmo avanzado de analítica deportiva operando en este año 2026.\n"
-        f"Analiza estrictamente el partido del Mundial: {equipo_a} vs {equipo_b}.\n"
+        f"Analiza estrictamente el partido: {equipo_a} vs {equipo_b}.\n"
         f"DATOS REALES ENTRANTES DE LA API:\n"
         f"- Sede/Estadio: {estadio_real}\n"
         f"- Árbitro Asignado: {arbitro_real}\n\n"
-        f"🚨 INSTRUCCIÓN DE VOLATILIDAD Y DINAMISMO EXTREMO:\n"
-        f"PROHIBIDO inventar árbitros o sedes de forma repetitiva. Debes usar exactamente lo provisto: {arbitro_real} y {estadio_real}.\n"
-        f"El mercado de 'Primer Tiempo (45 Minutos)' y los 'Córners Totales' deben fluctuar libremente reflejando tendencias reales de Over o Under según corresponda.\n\n"
+        f"🚨 INSTRUCCIÓN DE ABSOLUTA INTEGRIDAD DE DATOS:\n"
+        f"PROHIBIDO inventar nombres de árbitros o sedes alternativas. Usa exactamente lo provisto: {arbitro_real} y {estadio_real}.\n"
+        f"El mercado de 'Primer Tiempo (45 Minutos)' y los 'Córners Totales' deben fluctuar libremente reflejando tendencias analíticas coherentes.\n\n"
         f"🚨 FILTRO REGENERATIVO OBLIGATORIO 2026:\n"
-        f"Prohibido basar análisis o mencionar futbolistas viejos o fuera del proceso actual. Usa plantillas jóvenes y vigentes de este año 2026.\n\n"
-        f"REGLAS OBLIGATORIAS DE DISEÑO, MÉTRICAS Y SUITE COMPLETA:\n"
+        f"Prohibido basar análisis o mencionar futbolistas fuera del proceso actual de este año 2026.\n\n"
+        f"REGLAS OBLIGATORIAS DE DISEÑO:\n"
         f"1. PROHIBIDO usar '1H'. Escribe siempre 'Primer Tiempo (45 Minutos)'.\n"
         f"2. CUADRE PERFECTO DEL 100%: En los mercados Over/Under muestra ambos porcentajes y la suma debe dar exactamente 100%.\n"
         f"3. FORMATO VISUAL CON RECUADROS OBLIGATORIOS Y GRÁFICOS DE BARRAS DE TEXTO:\n"
@@ -191,14 +189,13 @@ def ejecutar_auditoria_core(message, partido_usuario):
         f"   - Si la opción tiene entre 50% y 70%: Pon el recuadro amarillo 🟨 seguido del porcentaje.\n"
         f"   - Si la opción tiene <50%: Pon el recuadro rojo 🟥 seguido del porcentaje.\n"
         f"   - Debes incluir barras de texto representativas utilizando caracteres tipo '████▒▒▒▒' de exactamente 8 caracteres totales.\n"
-        f"4. Las justificaciones deben ser de exactamente 1 renglón.\n"
-        f"5. No cortes el texto. Completa todo el reporte detallado.\n\n"
+        f"4. Las justificaciones deben ser de exactamente 1 renglón.\n\n"
         f"Devuelve exactamente este formato premium:\n\n"
         f"🏟️ **INTELIGENCIA CONTEXTUAL Y SEDE:**\n"
         f"- Estadio: {estadio_real}\n"
-        f"- Clima y Presión Atmosférica: [Detalle de temperatura y altitud con su impacto real]\n"
-        f"- Índice de Fatiga por Viaje: [Cómputo analítico de descanso acumulado]\n"
-        f"- Historial H2H Ponderado (Últimos 2 Años): [Tendencia de los enfrentamientos recientes]\n\n"
+        f"- Clima y Presión Atmosférica: [Detalle analítico]\n"
+        f"- Índice de Fatiga por Viaje: [Cómputo analítico]\n"
+        f"- Historial H2H Ponderado (Últimos 2 Años): [Tendencia de enfrentamientos]\n\n"
         f"📊 **DATOS AVANZADOS Y RENDIMIENTO COLECTIVO:**\n"
         f"- Goles Esperados (Proyección xG vs xGA):\n"
         f"  * {equipo_a}: [X.XX xG] | {equipo_b}: [X.XX xG]\n"
@@ -229,7 +226,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
         f"🎯 **EFECTIVIDAD EN MINUTOS CRÍTICOS:**\n"
         f"- Ventana Inicial (Minuto 1 al 15): [Tendencia]\n"
         f"- Ventana Final (Minuto 75 al 90): [Volumen]\n\n"
-        f"🏹 **TIROS A PUERTA (VALORES REALISTAS):**\n"
+        f"🏹 **TIROS A PUERTA:**\n"
         f"  * Over [7.5]: [Recuadro] [XX]% | Under [7.5]: [Recuadro] [XX]%\n"
         f"  * Desglose: {equipo_a}: X-Y tiros directos | {equipo_b}: X-Y tiros directos"
     )
@@ -239,7 +236,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_ia}],
-        "temperature": 0.75,
+        "temperature": 0.3,
         "max_tokens": 1500
     }
     
@@ -249,7 +246,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
         if 'choices' in data:
             bot.reply_to(message, data['choices'][0]['message']['content'])
     except Exception as e:
-        bot.reply_to(message, f"Aviso del sistema: Inconveniente en el núcleo analítico. {e}")
+        bot.reply_to(message, f"Aviso del sistema: Inconveniente en el núcleo analítico estructural. {e}")
 
 # =====================================================================
 # 3. SECCIÓN: AUDITAR JUGADOR
@@ -262,39 +259,35 @@ def solicitar_jugador(message):
     bot.reply_to(
         message, 
         "📥 **MODO AUDITORÍA DE JUGADOR ACTIVO**\n"
-        "Escribe directamente el nombre del jugador.\n"
-        "👉 *Ejemplos:* 'Santiago Giménez', 'Son Heung-min'"
+        "Escribe directamente el nombre del jugador para mapear rendimiento en 2026.\n"
+        "👉 *Ejemplo:* 'Santiago Giménez'"
     )
 
 def procesar_auditoria_jugador_core(message):
     datos = message.text
-    bot.reply_to(message, f"Auditando métricas y convocatoria real para: **{datos}**... ⚡")
+    bot.reply_to(message, f"Auditando métricas de rendimiento real para: **{datos}**... ⚡")
     
     prompt_jugador = (
-        f"Actúa como un algoritmo avanzado de Big Data, Scouting Internacional y Análisis de Rendimiento operando en este año 2026.\n"
-        f"Evalúa con absoluta precisión el perfil, rol y estadísticas del jugador: {datos}.\n\n"
-        f"🚨 FILTROS OBLIGATORIOS DE CONTEXTO GLOBAL MUNDIAL 2026:\n"
-        f"1. AUDITORÍA DE CONVOCATORIA INTERNACIONAL: Todo jugador consultado se asume que forma parte activa o está firmemente en el radar estratégico.\n"
+        f"Actúa como un algoritmo avanzado de Big Data y Scouting Internacional operando en el año 2026.\n"
+        f"Evalúa el perfil, rol y estadísticas del jugador: {datos}.\n\n"
+        f"🚨 FILTROS OBLIGATORIOS:\n"
+        f"1. Analiza su situación actual y estadísticas reales de la temporada vigente.\n"
         f"2. CONTROL ESTRICTO DE POSICIÓN TÁCTICA REAL.\n\n"
-        f"🚨 REGLAS DE RECUADROS VISUALES POR PORCENTAJE:\n"
-        f"   - Si la opción tiene >70%: Pon el recuadro verde 🟩.\n"
-        f"   - Si la opción tiene entre 50% y 70%: Pon el recuadro amarillo 🟨.\n"
-        f"   - Si la opción tiene <50%: Pon el recuadro rojo 🟥.\n\n"
-        f"Devuelve exactamente este diseño limpio, sin notas ni textos extras al final:\n\n"
+        f"Devuelve exactamente este diseño limpio, sin notas extra:\n\n"
         f"🏃‍♂️ **AUDITORÍA DE JUGADOR: MOTOR DAMLEYT STRATEGY**\n"
         f"──────────────────────────────────────────────────\n"
         f"📋 **DATOS GENERALES:**\n"
         f"- Jugador: [Nombre completo]\n"
-        f"- Situación de Convocatoria: [Confirmado en Plantilla / En Radar]\n"
-        f"- Rol Proyectado / Estatus Actual: [Posición Real]\n\n"
+        f"- Estatus Actual: [Club y Selección 2026]\n"
+        f"- Rol Proyectado: [Posición Real]\n\n"
         f"🎯 **MÉTRICAS DE TIRO A PUERTA:**\n"
-        f"- ¿Logra al menos 1 tiro a puerta?: [Recuadro] [XX]%\n"
-        f"- ¿Logra 2 o más tiros a puerta?: [Recuadro] [XX]%\n"
+        f"- ¿Logra al menos 1 tiro a pueta?: [🟩/🟨/🟥] [XX]%\n"
+        f"- ¿Logra 2 o más tiros a puerta?: [🟩/🟨/🟥] [XX]%\n"
         f"- Tiros directos estimados: [Rango realista]\n"
-        f"- Justificación de remate: [Explica la tendencia real en 1 renglón]\n\n"
+        f"- Justificación de remate: [Explica la tendencia en 1 renglón]\n\n"
         f"⚽ **EFECTIVIDAD DE ANOTACIÓN:**\n"
-        f"- Probabilidad de anotar en el partido: [Recuadro] [XX]%\n"
-        f"- Estilo de Juego / Perfil Técnico: [Perfil táctico preciso en 1 renglón]\n"
+        f"- Probabilidad de anotar en el partido: [🟩/🟨/🟥] [XX]%\n"
+        f"- Estilo de Juego / Perfil Técnico: [Perfil preciso en 1 renglón]\n"
         f"──────────────────────────────────────────────────"
     )
     
@@ -303,7 +296,7 @@ def procesar_auditoria_jugador_core(message):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_jugador}],
-        "temperature": 0.7,
+        "temperature": 0.4,
         "max_tokens": 700
     }
     
@@ -316,7 +309,7 @@ def procesar_auditoria_jugador_core(message):
         bot.reply_to(message, f"Aviso del sistema: Error al procesar métricas del jugador. {e}")
 
 # =====================================================================
-# 4. 🛡️ SECCIÓN INTERACTIVA: COBERTURA EN VIVO (MÓDULO PURGADO DE INVENTOS)
+# 4. 🛡️ SECCIÓN CRÍTICA: COBERTURA EN VIVO (CERO TOLERANCIA A DATOS FALSOS)
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🛡️ Cobertura en Vivo")
 def solicitar_cobertura_partido(message):
@@ -326,23 +319,23 @@ def solicitar_cobertura_partido(message):
     bot.reply_to(
         message, 
         "🛡️ **HEDGING TOOL: COBERTURA DE APUESTAS EN VIVO**\n"
-        "Indique el partido activo para rastrear su marcador exacto en tiempo real.\n"
+        "Indique el partido activo para extraer su marcador e información real desde el servidor de datos.\n"
         "👉 *Ejemplo:* Costa de Marfil vs Alemania"
     )
 
 def ejecutar_cobertura_live_core(message):
     partido_usuario = message.text.strip()
-    bot.reply_to(message, f"Buscando estado en vivo en la API de Fútbol para: **{partido_usuario}**... ⚡")
+    bot.reply_to(message, f"Consultando estado en vivo en la API de Fútbol para: **{partido_usuario}**... ⚡")
     
     datos_api = obtener_datos_reales_partido(partido_usuario, es_live=True)
     
-    # CONTROL ESTRICTO: Si la API de fútbol no devuelve nada en tiempo real, se frena el análisis. PROHIBIDO INVENTAR.
-    if not datos_api:
+    # CONTROL INTERNO ABSOLUTO: Si no hay partido real en vivo detectado, se interrumpe la función de inmediato.
+    if not datos_api or not datos_api.get("en_vivo"):
         bot.send_message(
             message.chat.id,
-            f"❌ **MÓDULO LIVE: SIN DATOS EN TIEMPO REAL**\n"
-            f"La API de Fútbol no reportó ningún partido en progreso activo que coincida con '{partido_usuario}'.\n"
-            f"Asegúrese de escribir bien los nombres o que el partido ya haya comenzado."
+            f"❌ **MÓDULO LIVE: OPERACIÓN ABORTADA**\n"
+            f"El servidor de la API de Fútbol no registra ningún partido activo en progreso para '{partido_usuario}' en este momento.\n\n"
+            f"⚠️ *Nota de Seguridad:* El sistema de cobertura en vivo tiene prohibido generar proyecciones o estrategias basadas en simulaciones o datos fijos. Intente cuando el encuentro esté en juego."
         )
         return
 
@@ -354,27 +347,27 @@ def ejecutar_cobertura_live_core(message):
     estado_txt = datos_api["status_txt"]
 
     prompt_cobertura = (
-        f"Actúa como un algoritmo matemático avanzado de arbitraje deportivo y hedging en tiempo real (Año 2026).\n"
-        f"Genera una guía de cobertura basada EXCLUSIVAMENTE en estos parámetros dinámicos EXTRAÍDOS DE LA API DE FÚTBOL:\n"
+        f"Actúa como un algoritmo matemático avanzado de arbitraje deportivo y hedging en tiempo real.\n"
+        f"Genera una guía de cobertura analítica basada EXCLUSIVAMENTE en estos parámetros reales EXTRAÍDOS DE LA API DE FÚTBOL:\n"
         f"- Partido: {eq_a} vs {eq_b}\n"
-        f"- Marcador Extraído: {eq_a} {goles_a} - {goles_b} {eq_b}\n"
-        f"- Minuto Extraído: Minuto {minuto_actual} ({estado_txt})\n\n"
-        f"🚨 REGLAS MATEMÁTICAS SIN ERRORES (PROHIBIDO AGREGAR CONTENIDO DE MEMORIA ANTERIOR):\n"
-        f"1. Procesa únicamente la ventaja o igualdad real actual ({goles_a} a {goles_b}) en el minuto {minuto_actual}.\n"
-        f"2. Queda ESTRICTAMENTE PROHIBIDO usar plantillas estáticas con marcadores 4-1 o minutos 75 de forma fija.\n"
-        f"3. Adapta el análisis técnico a un renglón indicando matemáticamente cómo este marcador impacta las líneas iniciales.\n\n"
-        f"Genera exactamente el bloque premium con la información real mapeada:\n\n"
+        f"- Marcador Extraído en Vivo: {eq_a} {goles_a} - {goles_b} {eq_b}\n"
+        f"- Minuto Extraído en Vivo: Minuto {minuto_actual} ({estado_txt})\n\n"
+        f"🚨 REGLAS ESTRICTAS DE COBERTURA MATEMÁTICA:\n"
+        f"1. Procesa únicamente la ventaja, desventaja o igualdad numérica real dictada por el marcador actual: {goles_a} a {goles_b}.\n"
+        f"2. Queda ESTRICTAMENTE PROHIBIDO usar plantillas históricas, marcadores fijos (como 4-1) o minutos inventados.\n"
+        f"3. Adapta las sugerencias operativas de contrapeso al minuto {minuto_actual}.\n\n"
+        f"Genera exactamente esta respuesta estructurada:\n\n"
         f"🛡️ **Sugerencias de Cobertura (Hedging Tool) - Motor Damleyt Strategy**\n"
         f"──────────────────────────────────────────────────\n"
         f"🏟️ **Partido Monitoreado:** {eq_a} vs {eq_b}\n"
         f"⏱️ **Estado Real en Vivo:** Minuto {minuto_actual} | Marcador Actual: {goles_a} - {goles_b} ({estado_txt})\n\n"
         f"🎯 **ESTRATEGIA DE COBERTURA INMEDIATA:**\n"
         f"- Si tu línea inicial era favor de {eq_a}:\n"
-        f"  * 🟢 Pick de Cobertura Live: [Línea táctica ajustada al marcador real de {goles_a}-{goles_b}]\n"
-        f"  * 📊 Porcentaje de Capital a Reinvertir: [XX]% para resguardar capital.\n\n"
+        f"  * 🟢 Pick de Cobertura Live: [Línea técnica ajustada al marcador de {goles_a}-{goles_b} en el minuto {minuto_actual}]\n"
+        f"  * 📊 Porcentaje de Capital a Reinvertir: [XX]% para resguardo de banca.\n\n"
         f"- Si tu línea inicial era favor de {eq_b} o mercados alternos:\n"
-        f"  * 🔵 Pick de Cobertura Alterno: [Pick de contrapeso adaptado al estado real del partido]\n\n"
-        f"💡 *Análisis Técnico:* [Análisis de 1 renglón enfocado puramente en el desarrollo actual de {goles_a} a {goles_b}].\n"
+        f"  * 🔵 Pick de Cobertura Alterno: [Pick de contrapeso adaptado estrictamente al estado de juego]\n\n"
+        f"💡 *Análisis Técnico:* [Análisis de 1 renglón enfocado en el desarrollo real de {goles_a} a {goles_b}].\n"
         f"──────────────────────────────────────────────────"
     )
 
@@ -383,7 +376,7 @@ def ejecutar_cobertura_live_core(message):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_cobertura}],
-        "temperature": 0.0,  # Cero absoluto para matar cualquier alucinación creativa
+        "temperature": 0.0,  # Cero absoluto para eliminar cualquier tipo de alucinación del modelo
         "max_tokens": 700
     }
 
@@ -418,14 +411,14 @@ def procesar_parley(message):
 
     prompt_parley = (
         f"Actúa como un auditor experto en apuestas deportivas operando en este año 2026.\n"
-        f"Genera un Parley sugerido basado únicamente en partidos reales con riesgo {riesgo}.\n\n"
+        f"Genera un Parley sugerido basado en partidos reales con perfil de riesgo {riesgo}.\n\n"
         f"Formateo de salida:\n\n"
         f"📊 **PARLEY SUGERIDO - RIESGO {riesgo}**\n"
         f"-----------------------------------------\n"
-        f"1. [Partido Real] -> Selección: [Tu Pick Variable] | Cuota Est.: [X.XX]\n"
-        f"2. [Partido Real] -> Selección: [Tu Pick Variable] | Cuota Est.: [X.XX]\n"
-        f"3. [Partido Real] -> Selección: [Tu Pick Variable] | Cuota Est.: [X.XX]\n"
-        f"-----------------------------------------\n"
+        f"1. [Partido Real] -> Selección: [Pick Variable] | Cuota Est.: [X.XX]\n"
+        f"2. [Partido Real] -> Selección: [Pick Variable] | Cuota Est.: [X.XX]\n"
+        f"3. [Partido Real] -> Selección: [Pick Variable] | Cuota Est.: [X.XX]\n"
+        -----------------------------------------\n"
         f"📈 **Momio Global Estimado:** [+XXX]\n"
         f"🎯 **Probabilidad de Acierto Numérica:** [XX]%"
     )
@@ -435,7 +428,7 @@ def procesar_parley(message):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_parley}],
-        "temperature": 0.7
+        "temperature": 0.6
     }
 
     try:
@@ -457,12 +450,12 @@ def simular_ticket_apuesta(message):
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
     
-    bot.reply_to(message, "🎟️ Compilando selecciones óptimas de alta probabilidad con sugerencias de cobertura general... ⚡")
+    bot.reply_to(message, "🎟️ Compilando selecciones de alto valor basadas en partidos programados... ⚡")
 
     prompt_ticket = (
-        f"Actúa como un algoritmo experto de la suite Damleyt Data Analytics operando en el Mundial 2026.\n"
-        f"Genera un ticket de apuesta simulado combinando 3 selecciones de alto valor basadas en partidos reales.\n\n"
-        f"Usa exactamente este formato de salida ultra limpio:\n\n"
+        f"Actúa como un algoritmo experto de la suite Damleyt Data Analytics operando en este año 2026.\n"
+        f"Genera un ticket de inversión simulado combinando 3 selecciones de alto valor basadas en partidos reales de fútbol.\n\n"
+        f"Usa exactamente este formato de salida limpio:\n\n"
         f"🎟️ **TICKET DE INVERSIÓN: DAMLEYT STRATEGY**\n"
         f"──────────────────────────────────────────────────\n"
         f"🏟️ [Partido Real 1]\n"
@@ -473,10 +466,10 @@ def simular_ticket_apuesta(message):
         f"🔹 Selección: [Pick] | Cuota: [X.XX]\n"
         f"──────────────────────────────────────────────────\n"
         f"🛡️ **SUGERENCIA DE COBERTURA GENERAL:**\n"
-        f"- [Instrucción de cobertura de 1 renglón]\n\n"
+        f"- [Instrucción técnica operativa en 1 renglón]\n\n"
         f"📊 **MÉTRICAS DEL TICKET:**\n"
         f"- Momio Total Proyectado: [+XXX / X.XX]\n"
-        f"- Nivel de Confianza: 🟩 [XX]%\n"
+        f"- Nivel de Confianza: [🟩/🟨] [XX]%\n"
         f"- Recommendation Stake: Stk [X/10]\n"
         f"──────────────────────────────────────────────────"
     )
@@ -486,7 +479,7 @@ def simular_ticket_apuesta(message):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_ticket}],
-        "temperature": 0.7,
+        "temperature": 0.6,
         "max_tokens": 800
     }
 
@@ -507,18 +500,18 @@ def simular_escenarios_live(message):
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
     
-    bot.reply_to(message, "📊 Calculando desviaciones de cuotas de mercado (Value-Bets) y Simulación Live Minuto 15... ⚡")
+    bot.reply_to(message, "📊 Calculando desviaciones de cuotas de mercado (Value-Bets) y Simulación Live... ⚡")
 
     prompt_live = (
-        f"Actúa como una calculadora avanzada de apuestas de valor operando en este año 2026.\n"
-        f"Simula un escenario de partido dinámico en vivo y realiza el cuadre matemático al 100%.\n\n"
-        f"Devuelve exactamente esta estructura visual limpia:\n\n"
+        f"Actúa como una calculadora de apuestas de valor operando en este año 2026.\n"
+        f"Simula un escenario de partido dinámico ante variaciones en vivo con cuadre perfecto del 100%.\n\n"
+        f"Devuelve exactamente esta estructura:\n\n"
         f"📉 **SIMULACIÓN DE ESCENARIOS LIVE (MINUTO 15)**\n"
         f"──────────────────────────────────────────────────\n"
-        f"🏟️ Partido Proyectado: [Partido Real Mundial]\n"
-        f"🚨 Escenario Dinámico: Gol Tempranero antes del Min. 15.\n"
+        f"🏟️ Partido Proyectado: [Partido Real]\n"
+        f"🚨 Escenario Dinámico: Ajuste de líneas por desarrollo inicial.\n"
         f"- Cambio de Mercado en Vivo:\n"
-        f"  * Línea de Córners: Proyección sube a Over [X.X] (Probabilidad: 🟩 [XX]% | Under: 🟥 [XX]%)\n"
+        f"  * Línea de Córners: Proyección Over [X.X] (Probabilidad: 🟩 [XX]% | Under: 🟥 [XX]%)\n"
         f"  * Ajuste de Hándicap Asiático Óptimo: [Línea sugerida]\n\n"
         f"🎯 **CALCULADORA DE VALOR (VALUE-BET DETECTOR)**\n"
         f"──────────────────────────────────────────────────\n"
@@ -534,7 +527,7 @@ def simular_escenarios_live(message):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_live}],
-        "temperature": 0.7,
+        "temperature": 0.5,
         "max_tokens": 800
     }
 
@@ -547,7 +540,7 @@ def simular_escenarios_live(message):
         bot.reply_to(message, f"Aviso del sistema: Error al calcular matrices de valor live. {e}")
 
 # =====================================================================
-# 8. MÓDULO EXCLUSIVO: ALERTAS PRE-MATCH (BAJAS & ALERTAS)
+# 8. MÓDULO EXCLUSIVO: ALERTAS PRE-MATCH
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "📢 Alertas Pre-Match")
 def enviar_alertas_prematch(message):
@@ -555,20 +548,20 @@ def enviar_alertas_prematch(message):
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
     
-    bot.reply_to(message, "📢 Extrayendo alertas críticas de última hora (Lesiones, Modificaciones de Cuotas y Clima)... ⚡")
+    bot.reply_to(message, "📢 Extrayendo alertas críticas de última hora (Lesiones, Cuotas y Clima)... ⚡")
 
     prompt_alertas = (
-        f"Actúa como un analista experto de riesgos deportivos operando en este año 2026.\n"
-        f"Genera un reporte de alertas Pre-Match basado en partidos reales del Mundial 2026.\n\n"
-        f"Devuelve exactamente esta estructura visual limpia:\n\n"
+        f"Actúa como un analista de riesgos deportivos operando en este año 2026.\n"
+        f"Genera un reporte de alertas Pre-Match basado en partidos reales de fútbol de la temporada actual.\n\n"
+        f"Devuelve exactamente esta estructura limpia:\n\n"
         f"📢 **ALERTAS PRE-MATCH Y RIESGO DE INVERSIÓN**\n"
         f"──────────────────────────────────────────────────\n"
-        f"🏟️ Partido Bajo Alerta: [Partido Real Mundial]\n"
-        f"🚨 Reporte de Última Hora: [Detalle de baja en 1 renglón]\n"
+        f"🏟️ Partido Bajo Alerta: [Partido Real]\n"
+        f"🚨 Reporte de Última Hora: [Detalle de baja o clima en 1 renglón]\n"
         f"- Impacto en el Mercado:\n"
         f"  * Línea de Dinero: [Variación estimada del momio]\n"
         f"  * Ajuste de Goles Proyectados: [Tendencia Over/Under]\n\n"
-        f"📉 **ALERTAS ADICIONALES (VOLUMEN DE DINERO DE CASA DE APUESTAS)**\n"
+        f"📉 **ALERTAS ADICIONALES (VOLUMEN EN CASAS DE APUESTAS)**\n"
         f"──────────────────────────────────────────────────\n"
         f"🔹 Movimiento Anómalo: [Mercado inflado en 1 renglón]\n"
         f"- Recommendation Operativa: [Consejo de control de stake en 1 renglón]"
@@ -579,7 +572,7 @@ def enviar_alertas_prematch(message):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": prompt_alertas}],
-        "temperature": 0.7,
+        "temperature": 0.5,
         "max_tokens": 700
     }
 
