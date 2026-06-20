@@ -2,6 +2,8 @@ import os
 import sys
 import time
 import requests
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # INSTALACIÓN AUTOMÁTICA DE DEPENDENCIAS CRÍTICAS
 try:
@@ -16,8 +18,6 @@ from telebot import types
 # =====================================================================
 # 🔑 SECCIÓN DE APIS - JALA DESDE RENDER O MANUALMENTE AQUÍ
 # =====================================================================
-# El código primero buscará las variables seguras en Render. 
-# Si no las pones en Render, usará lo que escribas dentro de las comillas.
 TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "8945180693:AAG7MxrAke7a97pztZJ7zpkYZzZX3IWiVGM"
 API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "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"
 API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "1589324158msh59fc26e7a7aad35p1ec314jsn40a77ef790e1"
@@ -26,8 +26,26 @@ API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "1589324158msh59fc26e7a7aad
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
 
 # Diccionarios de control de flujo estricto (Evita cruces de datos)
+USUARIOS_EN_ESPERA_PARTIDO = {}
 USUARIOS_EN_ESPERA_JUGADOR = {}
 USUARIOS_EN_ESPERA_COBERTURA = {}
+
+# =====================================================================
+# 🌐 PARCHE WEB SERVICE: SERVIDOR EN SEGUNDO PLANO PARA RENDER
+# =====================================================================
+class RenderHealthCheckServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"DAMLEYT CORE: OPERANDO EN LA NUBE")
+
+def iniciar_servidor_render():
+    # Render asigna automáticamente un puerto en la variable PORT, si no usa el 8080 por defecto
+    puerto = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", puerto), RenderHealthCheckServer)
+    print(f"📡 Parche Web activado. Escuchando peticiones de Render en el puerto: {puerto}")
+    server.serve_forever()
 
 # =====================================================================
 # 🌐 MOTOR DE RECOLECCIÓN FASE 3.5: FILTRADO ESTRICTO DE PARTIDOS
@@ -38,47 +56,47 @@ def obtener_datos_reales_partido(busqueda_usuario):
         "x-rapidapi-key": API_FUTBOL_KEY,
         "x-rapidapi-host": "v3.football.api-sports.io"
     }
-
+    
     texto_limpio = busqueda_usuario.lower().replace("vs", " ").replace("-", " ")
     palabras = [p.strip() for p in texto_limpio.split() if len(p.strip()) > 2]
     if not palabras:
         return None
-
+    
     params = {
         "league": "1",
         "season": "2026"
     }
-
+    
     try:
         response = requests.get(url_fixtures, headers=headers, params=params, timeout=10)
         data = response.json()
-
+        
         if data.get("response"):
             for item in data["response"]:
                 home_team = item["teams"]["home"]["name"].lower()
                 away_team = item["teams"]["away"]["name"].lower()
-
+                
                 match_local = any(p in home_team for p in palabras)
                 match_visita = any(p in away_team for p in palabras)
-
+                
                 if match_local and match_visita:
                     fixture_info = item.get("fixture", {})
                     venue_info = fixture_info.get("venue", {})
-
+                    
                     nombre_estadio = venue_info.get("name")
                     ciudad_estadio = venue_info.get("city")
                     arbitro_assigned = fixture_info.get("referee")
-
+                    
                     if nombre_estadio and str(nombre_estadio).strip() and nombre_estadio != "None":
                         estadio_final = f"{nombre_estadio} ({ciudad_estadio})" if ciudad_estadio else nombre_estadio
                     else:
                         estadio_final = "Sede por definir"
-
+                        
                     if arbitro_assigned and str(arbitro_assigned).strip() and arbitro_assigned != "None":
                         arbitro_final = str(arbitro_assigned).split(',')[0].strip()
                     else:
                         arbitro_final = "Por definir"
-
+                        
                     return {
                         "equipo_local": item["teams"]["home"]["name"],
                         "equipo_visitante": item["teams"]["away"]["name"],
@@ -87,7 +105,7 @@ def obtener_datos_reales_partido(busqueda_usuario):
                     }
     except Exception as e:
         print(f"⚠️ Error en filtrado estricto: {e}")
-
+        
     return None
 
 # =====================================================================
@@ -95,9 +113,10 @@ def obtener_datos_reales_partido(busqueda_usuario):
 # =====================================================================
 @bot.message_handler(commands=['start'])
 def start(message):
+    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
-
+        
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     btn_partidos = types.KeyboardButton("⚽ Analizar Partido")
     btn_picks = types.KeyboardButton("🔥 Picks para Parley")
@@ -106,9 +125,9 @@ def start(message):
     btn_cobertura = types.KeyboardButton("🛡️ Cobertura en Vivo")
     btn_live = types.KeyboardButton("📉 Escenarios Live & Value")
     btn_alertas = types.KeyboardButton("📢 Alertas Pre-Match")
-
+    
     markup.add(btn_partidos, btn_picks, btn_jugador, btn_ticket, btn_cobertura, btn_live, btn_alertas)
-
+    
     nombre_usuario = message.from_user.first_name
     mensaje = f"""🛠️ SYSTEM CORE: DAMLEYT DATA ANALYTICS
 ⚡ Motor: Damleyt Strategy v3.5 (Suite de Inteligencia Completa)
@@ -127,6 +146,7 @@ Se han cargado los 15 módulos analíticos de alta gama (Estadísticas xG, Bloqu
 def solicitar_partido(message):
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
+    USUARIOS_EN_ESPERA_PARTIDO[message.chat.id] = True
     bot.reply_to(
         message, 
         "Indique el partido o equipo que desea auditar.\n"
@@ -135,9 +155,9 @@ def solicitar_partido(message):
 
 def ejecutar_auditoria_core(message, partido_usuario):
     bot.reply_to(message, f"Procesando matriz táctica avanzada (xG, Presión Atmosférica, Fatiga e Historial Ponderado)... ⚡")
-
+    
     datos_api = obtener_datos_reales_partido(partido_usuario)
-
+    
     if datos_api:
         equipo_a = datos_api["equipo_local"]
         equipo_b = datos_api["equipo_visitante"]
@@ -208,7 +228,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
         f"  * Over [7.5]: [Recuadro] [XX]% | Under [7.5]: [Recuadro] [XX]%\n"
         f"  * Desglose: {equipo_a}: X-Y tiros directos | {equipo_b}: X-Y tiros directos"
     )
-
+    
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
@@ -217,7 +237,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
         "temperature": 0.05,
         "max_tokens": 1500
     }
-
+    
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         data = response.json()
@@ -231,6 +251,7 @@ def ejecutar_auditoria_core(message, partido_usuario):
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🏃‍♂️ Auditar Jugador")
 def solicitar_jugador(message):
+    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
     USUARIOS_EN_ESPERA_JUGADOR[message.chat.id] = True
     bot.reply_to(
@@ -243,7 +264,7 @@ def solicitar_jugador(message):
 def procesar_auditoria_jugador_core(message):
     datos = message.text
     bot.reply_to(message, f"Auditando métricas y convocatoria real para: **{datos}**... ⚡")
-
+    
     prompt_jugador = (
         f"Actúa como un algoritmo avanzado de Big Data, Scouting Internacional y Análisis de Rendimiento operando en este año 2026.\n"
         f"Evalúa con absoluta precisión el perfil, rol y estadísticas del jugador: {datos}.\n\n"
@@ -251,6 +272,7 @@ def procesar_auditoria_jugador_core(message):
         f"1. AUDITORÍA DE CONVOCATORIA INTERNACIONAL: Todo jugador consultado se asume que forma parte activa o está firmemente en el radar estratégico de su respectiva selección para esta edición de la Copa del Mundo.\n"
         f"2. CONTROL ESTRICTO DE POSICIÓN TÁCTICA REAL:\n"
         f"   - PORTEROS: Rol 'Portero'. Tiros a puerta: 0% o 1% máximo.\n"
+        f"   - DEFENSAS/LATERALES: Rol 'Defensa Central' o 'Lateral'. Tiros a puerta coherentes y bajos (ej: 5% a 15% por balón parado).\n"
         f"   - DEFENSAS/LATERALES: Rol 'Defensa Central' o 'Lateral'. Tiros a puerta coherentes y bajos (ej: 5% a 15% por balón parado).\n"
         f"   - MEDIOCAMPISTAS: Rol 'Mediocampista (MC / MCD)' y tiros de media distancia.\n"
         f"   - DELANTEROS/EXTREMOS: Rol 'Delantero Centro' o 'Extremo'. Probabilidades de ataque real (ej: 55% - 75%).\n\n"
@@ -275,7 +297,7 @@ def procesar_auditoria_jugador_core(message):
         f"- Estilo de Juego / Perfil Técnico: [Perfil táctico preciso en 1 renglón]\n"
         f"──────────────────────────────────────────────────"
     )
-
+    
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
@@ -284,7 +306,7 @@ def procesar_auditoria_jugador_core(message):
         "temperature": 0.35,
         "max_tokens": 700
     }
-
+    
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         data = response.json()
@@ -298,6 +320,7 @@ def procesar_auditoria_jugador_core(message):
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🛡️ Cobertura en Vivo")
 def solicitar_cobertura_partido(message):
+    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     USUARIOS_EN_ESPERA_COBERTURA[message.chat.id] = True
     bot.reply_to(
@@ -310,7 +333,7 @@ def solicitar_cobertura_partido(message):
 def ejecutar_cobertura_live_core(message):
     partido_usuario = message.text.strip()
     bot.reply_to(message, f"Buscando estado en vivo y calculando contrapicks de cobertura para: **{partido_usuario}**... ⚡")
-
+    
     datos_api = obtener_datos_reales_partido(partido_usuario)
     if datos_api:
         eq_a = datos_api["equipo_local"]
@@ -361,22 +384,21 @@ def ejecutar_cobertura_live_core(message):
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🔥 Picks para Parley")
 def menu_parley(message):
+    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
-
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    btn_bajo = types.InlineKeyboardButton("🟩 Bajo Riesgo (3-8 Opciones)", callback_data="parley_bajo")
-    btn_medio = types.InlineKeyboardButton("🟨 Medio Riesgo (3-8 Opciones)", callback_data="parley_medio")
-    btn_alto = types.InlineKeyboardButton("🟥 Alto Riesgo (3-8 Opciones)", callback_data="parley_alto")
+        
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    btn_bajo = types.KeyboardButton("🟩 Bajo Riesgo (3-8 Opciones)")
+    btn_medio = types.KeyboardButton("🟨 Medio Riesgo (3-8 Opciones)")
+    btn_alto = types.KeyboardButton("🟥 Alto Riesgo (3-8 Opciones)")
     markup.add(btn_bajo, btn_medio, btn_alto)
     bot.send_message(message.chat.id, "Seleccione el nivel de riesgo estratégico:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("parley_"))
-def procesar_parley(call):
-    riesgo = call.data.split("_")[1].upper()
-    bot.answer_callback_query(call.id)
-
-    msg_espera = bot.send_message(call.message.chat.id, f"⚡ Consultando matriz de datos para estructurar Parley de **{riesgo} RIESGO**...")
+@bot.message_handler(func=lambda message: message.text in ["🟩 Bajo Riesgo (3-8 Opciones)", "🟨 Medio Riesgo (3-8 Opciones)", "🟥 Alto Riesgo (3-8 Opciones)"])
+def procesar_parley(message):
+    riesgo = "BAJO" if "Bajo" in message.text else "MEDIO" if "Medio" in message.text else "ALTO"
+    msg_espera = bot.send_message(message.chat.id, f"⚡ Consultando matriz de datos para estructurar Parley de **{riesgo} RIESGO**...")
 
     prompt_parley = (
         f"Actúa como un analista experto en apuestas deportivas operando en este año 2026.\n"
@@ -405,19 +427,20 @@ def procesar_parley(call):
         data = response.json()
         if 'choices' in data:
             texto_parley = data['choices'][0]['message']['content']
-            bot.delete_message(call.message.chat.id, msg_espera.message_id)
-            bot.send_message(call.message.chat.id, texto_parley)
+            bot.delete_message(message.chat.id, msg_espera.message_id)
+            bot.send_message(message.chat.id, texto_parley)
     except Exception as e:
-        bot.send_message(call.message.chat.id, f"Aviso del sistema: Error al procesar matriz de parley. {e}")
+        bot.send_message(message.chat.id, f"Aviso del sistema: Error al procesar matriz de parley. {e}")
 
 # =====================================================================
 # 6. GENERADOR AUTOMATIZADO DE TICKETS DE APUESTAS
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🎟️ Crear Ticket")
 def simular_ticket_apuesta(message):
+    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
-
+    
     bot.reply_to(message, "🎟️ Compilando selecciones óptimas de alta probabilidad con sugerencias de cobertura general... ⚡")
 
     prompt_ticket = (
@@ -464,14 +487,15 @@ def simular_ticket_apuesta(message):
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "📉 Escenarios Live & Value")
 def simular_escenarios_live(message):
+    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
-
+    
     bot.reply_to(message, "📊 Calculando desviaciones de cuotas de mercado (Value-Bets) y Simulación Live Minuto 15... ⚡")
 
     prompt_live = (
         f"Actúa como una calculadora avanzada de apuestas de valor y simulador dinámico operando en el año 2026.\n"
-        f"Simula un escenario de partido real del Mundial 2026 bajo las siguientes reglas:\n"
+        f"Simula un escenario de partido real del Mundial 2026 bajo las siguientes rules:\n"
         f"1. Muestra un script analítico de lo que ocurre si el equipo no favorito anota antes del minuto 15.\n"
         f"2. Realiza un cálculo matemático comparando la probabilidad estimada por la IA frente a los momios de las casas de apuestas para entregar una 'Value-Bet' real.\n"
         f"3. Cuadre de porcentajes estricto del 100% en los mercados de probabilidades.\n\n"
@@ -514,9 +538,10 @@ def simular_escenarios_live(message):
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "📢 Alertas Pre-Match")
 def enviar_alertas_prematch(message):
+    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
     if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
-
+    
     bot.reply_to(message, "📢 Escaneando reportes médicos de selecciones para el ciclo mundialista actual... ⚡")
 
     prompt_alertas = (
@@ -553,43 +578,46 @@ def enviar_alertas_prematch(message):
         bot.reply_to(message, f"Aviso del sistema: Error al sincronizar alertas de campo. {e}")
 
 # =====================================================================
-# INTERCEPTOR GLOBAL INTELIGENTE (TOTALMENTE BLINDADO CONTRA CRUCES)
+# ⚡ MANEJADOR CENTRAL DE FLUJOS (TEXTO LIBRE) - CAPTURA DE ESTADOS ⚡
 # =====================================================================
 @bot.message_handler(func=lambda message: True)
-def escuchar_mensajes_directos(message):
-    texto_usuario = message.text.strip()
-    texto_lower = texto_usuario.lower()
-
-    BOTONES_MENU = ["⚽ Analizar Partido", "🔥 Picks para Parley", "🏃‍♂️ Auditar Jugador", "🎟️ Crear Ticket", "🛡️ Cobertura en Vivo", "📉 Escenarios Live & Value", "📢 Alertas Pre-Match"]
-    if texto_usuario in BOTONES_MENU:
+def manejar_flujos_texto_libre(message):
+    chat_id = message.chat.id
+    
+    # Flujo 1: Ejecutar Auditoría de Partido
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO:
+        del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+        ejecutar_auditoria_core(message, message.text)
         return
 
-    if USUARIOS_EN_ESPERA_COBERTURA.get(message.chat.id) == True:
-        del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
-        ejecutar_cobertura_live_core(message)
-        return
-
-    if USUARIOS_EN_ESPERA_JUGADOR.get(message.chat.id) == True:
-        del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
+    # Flujo 2: Ejecutar Auditoría de Jugador
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR:
+        del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
         procesar_auditoria_jugador_core(message)
         return
 
-    if "vs" in texto_lower or "-" in texto_lower:
-        ejecutar_auditoria_core(message, texto_usuario)
-    else:
-        bot.reply_to(message, "Comando o formato de texto libre no reconocido. Por favor, pulse primero el botón correspondiente del menú para inicializar el módulo.")
+    # Flujo 3: Ejecutar Cobertura Live (Hedging)
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA:
+        del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
+        ejecutar_cobertura_live_core(message)
+        return
+
+    pass
 
 # =====================================================================
-# BLINDAJE ANTI-CAÍDAS REPETITIVAS PARA RENDER / SERVIDORES 24/7
+# 🚀 ARRANQUE TOTAL DEL SERVIDOR (CON PARCHE DE PUERTO INTEGRADO)
 # =====================================================================
 if __name__ == "__main__":
-    print("-----------------------------------------")
-    print("SISTEMA CENTRAL TOTALMENTE INTEGRADO - FASE 3.5 OPERATIVA 🇲🇽")
-    print("-----------------------------------------")
-
+    print("🚀 DAMLEYT DATA ANALYTICS: INICIANDO EN RENDER FREE TIER")
+    
+    # Levanta el servidor web falso para Render en un hilo secundario
+    t = threading.Thread(target=iniciar_servidor_render, daemon=True)
+    t.start()
+    
+    # Arranca el polling del Bot de Telegram en el hilo principal
     while True:
         try:
-            bot.infinity_polling(timeout=20, long_polling_timeout=10)
+            bot.polling(none_stop=True, interval=0, timeout=60)
         except Exception as e:
-            print(f"⚠️ Alerta del Sistema: Error detectado en bucle ({e}). Reiniciando Core de forma automática en 5 segundos...")
+            print(f"⚠️ Alerta de reconexión automática en el core: {e}")
             time.sleep(5)
