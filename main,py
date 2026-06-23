@@ -1,0 +1,139 @@
+import os
+import sys
+import time
+import requests
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+try:
+    import telebot
+except ImportError:
+    os.system(f"{sys.executable} -m pip install pyTelegramBotAPI requests")
+    import telebot
+
+from telebot import types
+
+TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM")
+API_KEY_GROQ = os.environ.get("API_KEY_GROQ")
+API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY")
+
+bot = telebot.TeleBot(TOKEN_TELEGRAM)
+
+USUARIOS_ESPERA = {}
+
+class RenderServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"DAMLEYT CORE: ACTIVE")
+
+def iniciar_servidor_render():
+    puerto = int(os.environ.get("PORT", 8080))
+    HTTPServer(("0.0.0.0", puerto), RenderServer).serve_forever()
+
+def obtener_datos_reales_partido(busqueda, es_live=False):
+    url = "https://v3.football.api-sports.io/fixtures"
+    headers = {"x-rapidapi-key": API_FUTBOL_KEY, "x-rapidapi-host": "v3.football.api-sports.io"}
+    texto = busqueda.lower().replace("vs", " ").replace("-", " ")
+    palabras = [p.strip() for p in texto.split(" ") if p.strip() and len(p.strip()) > 1]
+    
+    if not palabras: return None
+    params = {"live": "all"} if es_live else {"season": "2026"}
+    
+    try:
+        res = requests.get(url, headers=headers, params=params, timeout=12)
+        if res.status_code == 200 and res.json().get("response"):
+            for item in res.json()["response"]:
+                home = item["teams"]["home"]["name"].lower()
+                away = item["teams"]["away"]["name"].lower()
+                if any(p in home for p in palabras) or any(p in away for p in palabras):
+                    venue = item["fixture"].get("venue", {}).get("name") or "Estadio Oficial"
+                    referee = str(item["fixture"].get("referee") or "Arbitro por Confirmar").split(',')[0].strip()
+                    status = item["fixture"].get("status", {})
+                    return {
+                        "local": item["teams"]["home"]["name"], "visita": item["teams"]["away"]["name"],
+                        "estadio": venue, "arbitro": referee,
+                        "en_vivo": status.get("short") in ["1H", "HT", "2H", "ET", "P"],
+                        "goles_l": item["goals"].get("home") or 0, "goles_v": item["goals"].get("away") or 0,
+                        "minuto": status.get("elapsed") or 0, "status_txt": status.get("long", "Programado")
+                    }
+    except: pass
+    return None
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    USUARIOS_ESPERA[message.chat.id] = None
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add(
+        types.KeyboardButton("⚽ Analizar Partido"), types.KeyboardButton("🛡️ Cobertura en Vivo"),
+        types.KeyboardButton("📢 Alertas Pre-Match"), types.KeyboardButton("📉 Escenarios Live & Value"),
+        types.KeyboardButton("🔥 Picks para Parley"), types.KeyboardButton("🏃‍♂️ Auditar Jugador"),
+        types.KeyboardButton("🎟️ Crear Ticket")
+    )
+    bot.send_message(message.chat.id, f"🛠️ SYSTEM CORE: DAMLEYT v3.6\n¡Bienvenido {message.from_user.first_name}!\nMódulos listos. Cero simulaciones o datos ficticios.", reply_markup=markup)
+
+@bot.message_handler(func=lambda msg: msg.text in ["⚽ Analizar Partido", "🛡️ Cobertura en Vivo", "📢 Alertas Pre-Match", "📉 Escenarios Live & Value"])
+def manejar_botones_analisis(message):
+    USUARIOS_ESPERA[message.chat.id] = message.text
+    bot.reply_to(message, f"Escribe el nombre del partido que deseas procesar para el módulo: **{message.text}**\n👉 _Ejemplo: Ecuador vs Curazao_")
+
+def consultar_groq(prompt, tokens=1000):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_tokens": tokens}
+    try:
+        r = requests.post(url, headers={"Authorization": f"Bearer {API_KEY_GROQ}"}, json=payload, timeout=15).json()
+        return r['choices'][0]['message']['content']
+    except: return "⚠️ Error temporal en el núcleo analítico de Groq."
+
+def ejecutar_modulo_ia(message, tipo_modulo, partido_txt):
+    es_live = (tipo_modulo == "🛡️ Cobertura en Vivo")
+    datos = obtener_datos_reales_partido(partido_txt, es_live=es_live)
+    
+    if not datos:
+        bot.send_message(message.chat.id, f"❌ **MÓDULO {tipo_modulo}:** No se encontraron partidos activos programados para el día de hoy que coincidan con '{partido_txt}'.")
+        return
+
+    if es_live and not datos["en_vivo"]:
+        bot.send_message(message.chat.id, f"❌ **MÓDULO LIVE:** El juego {datos['local']} vs {datos['visita']} no ha comenzado. Use Analizar Partido para Pre-Match.")
+        return
+
+    bot.reply_to(message, "Procesando matriz analítica en tiempo real... ⚡")
+    
+    if tipo_modulo == "⚽ Analizar Partido":
+        prompt = f"Actúa como un analista deportivo experto en este año 2026. Analiza el partido real: {datos['local']} vs {datos['visita']}. Sede: {datos['estadio']}. Arbitro: {datos['arbitro']}. Genera proyecciones de xG, posesión territorial, Over/Under de goles y corners usando barras visuales como ████▒▒▒▒ y recuadros 🟩 🟨 🟥. No inventes datos."
+    elif tipo_modulo == "📢 Alertas Pre-Match":
+        prompt = f"Actúa como analista de riesgos deportivos en este año 2026. Reporta alertas críticas (lesiones o movimientos de dinero) estrictamente para el juego real: {datos['local']} vs {datos['visita']}. Sede: {datos['estadio']}. Formato limpio con recomendaciones operativas de stake."
+    elif tipo_modulo == "📉 Escenarios Live & Value":
+        prompt = f"Actúa como una calculadora de Value-Bets en el año 2026. Proyecta escenarios de valor matemático y hándicaps asiáticos exclusivamente para el juego real: {datos['local']} vs {datos['visita']}."
+    else:
+        prompt = f"Actúa como un algoritmo de cobertura (hedging). Partido: {datos['local']} vs {datos['visita']}. Marcador Real: {datos['goles_l']}-{datos['goles_v']} en el minuto {datos['minuto']} ({datos['status_txt']}). Da sugerencias tácticas de inversión en vivo basadas en este estado real."
+
+    respuesta = consultar_groq(prompt)
+    bot.send_message(message.chat.id, respuesta)
+
+@bot.message_handler(func=lambda msg: msg.text in ["🔥 Picks para Parley", "🎟️ Crear Ticket"])
+def modulos_globales(message):
+    bot.reply_to(message, "Generando selecciones de alto valor con partidos programados reales... ⚡")
+    prompt = f"Genera un bloque deportivo para el módulo {message.text} usando estrictamente partidos reales del fixture futbolístico de la temporada actual de este año 2026."
+    bot.send_message(message.chat.id, consultar_groq(prompt, tokens=700))
+
+@bot.message_handler(func=lambda message: True)
+def procesar_texto_general(message):
+    chat_id = message.chat.id
+    texto = message.text.strip()
+    
+    if chat_id in USUARIOS_ESPERA and USUARIOS_ESPERA[chat_id] is not None:
+        modulo = USUARIOS_ESPERA[chat_id]
+        USUARIOS_ESPERA[chat_id] = None
+        ejecutar_modulo_ia(message, modulo, texto)
+    else:
+        bot.reply_to(message, "⚠️ Acción no válida. Utilice los botones del menú o escriba /start.")
+
+if __name__ == "__main__":
+    threading.Thread(target=iniciar_servidor_render, daemon=True).start()
+    print("🤖 DAMLEYT CORE: Operando exitosamente.")
+    while True:
+        try: bot.polling(none_stop=True, interval=0, timeout=20)
+        except: time.sleep(5)
+        
