@@ -418,7 +418,18 @@ def procesar_parley(message):
         f"1. [Partido Real] -> Selección: [Pick Variable] | Cuota Est.: [X.XX]\n"
         f"2. [Partido Real] -> Selección: [Pick Variable] | Cuota Est.: [X.XX]\n"
         f"3. [Partido Real] -> Selección: [Pick Variable] | Cuota Est.: [X.XX]\n"
-        -----------------------------------------\n"
+        if __name__ == "__main__":
+    hilo_servidor = threading.Thread(target=iniciar_servidor_render)
+    hilo_servidor.daemon = True
+    hilo_servidor.start()
+    
+    print("🤖 DAMLEYT CORE: Bot iniciado y listo para operar.")
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=20)
+        except Exception as e:
+            print(f"⚠️ Caída detectada: {e}. Reiniciando en 5 segundos...")
+            time.sleep(5)
         f"📈 **Momio Global Estimado:** [+XXX]\n"
         f"🎯 **Probabilidad de Acierto Numérica:** [XX]%"
     )
