@@ -155,12 +155,16 @@ def ejecutar_auditoria_core(message, partido_usuario):
     bot.reply_to(message, f"Procesando matriz táctica avanzada (xG, Estadio e Historial Real)... ⚡")
     datos_api = obtener_datos_reales_partido(partido_usuario, es_live=False)
     
-    # RESPALDO INTELIGENTE: Si la API se satura o no encuentra el texto exacto, la IA toma el control directo
+    # RESPALDO DIRECTO: Si la API no lo encuentra por dedazo o saturación, la IA procesa el partido directo
     if not datos_api:
         estadio_real = "Estadio Principal / Sede Oficial"
         arbitro_real = "Cuerpo Arbitral Designado"
-        equipo_a = partido_usuario.split("vs")[0].strip() if "vs" in partido_usuario.lower() else partido_usuario
-        equipo_b = partido_usuario.split("vs")[1].strip() if "vs" in partido_usuario.lower() else "Rival Directo"
+        if "vs" in partido_usuario.lower():
+            equipo_a = partido_usuario.lower().split("vs")[0].strip().title()
+            equipo_b = partido_usuario.lower().split("vs")[1].strip().title()
+        else:
+            equipo_a = partido_usuario.strip().title()
+            equipo_b = "Rival Directo"
     else:
         equipo_a = datos_api["equipo_local"]
         equipo_b = datos_api["equipo_visitante"]
