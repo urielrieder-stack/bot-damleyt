@@ -19,7 +19,7 @@ from telebot import types
 # =====================================================================
 # 🔑 SECCIÓN DE APIS - JALA DESDE RENDER O MANUALMENTE AQUÍ
 # =====================================================================
-TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "8945180693:AAG7MxrAke7a97pztZJ7zpkYZzZX3IWiVGM"
+TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "8945180693:AAFjuRXWutokv3a7pwAQakXGQ9a-teAg_iI"
 API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "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"
 API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "1589324158msh59fc26e7a7aad35p1ec314jsn40a77ef790e1"
 
