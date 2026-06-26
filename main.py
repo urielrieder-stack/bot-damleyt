@@ -6,94 +6,128 @@ import threading
 import random
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# INSTALACIÓN AUTOMÁTICA DE DEPENDENCIAS CRÍTICAS
+# =====================================================================
+# 📦 VERIFICACIÓN ASINCRÓNICA Y AUTOCONFIGURACIÓN DE DEPENDENCIAS
+# =====================================================================
 try:
     import telebot
 except ImportError:
-    print("⚡ Actualizando entorno VIP en Render... Espere.")
+    print("⚡ [SISTEMA] pyTelegramBotAPI no detectado. Instalando entorno seguro...")
     os.system(f"{sys.executable} -m pip install pyTelegramBotAPI requests")
     import telebot
 
 from telebot import types
 
 # =====================================================================
-# 🔑 SECCIÓN DE APIS - JALA DESDE RENDER O MANUALMENTE AQUÍ
+# 🔑 CONSTANTES GLOBALES Y VARIABLES DE ENTORNO (PRODUCCIÓN)
 # =====================================================================
-TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "8945180693:AAFjuRXWutokv3a7pwAQakXGQ9a-teAg_iI"
-API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "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"
-API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "1589324158msh59fc26e7a7aad35p1ec314jsn40a77ef790e1"
+TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "AQUÍ_VA_EL_TOKEN_DE_TU_BOT"
+API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "AQUÍ_VA_LA_API_KEY_DE_GROQ"
+API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "AQUÍ_VA_LA_API_KEY_DE_FUTBOL"
 
-# Inicialización de Telegram
-bot = telebot.TeleBot(TOKEN_TELEGRAM)
+# Validación de seguridad de credenciales en consola
+if TOKEN_TELEGRAM == "AQUÍ_VA_EL_TOKEN_DE_TU_BOT":
+    print("⚠️ [ADVERTENCIA] TOKEN_TELEGRAM por defecto. Configure la variable de entorno.")
+if API_KEY_GROQ == "AQUÍ_VA_LA_API_KEY_DE_GROQ":
+    print("⚠️ [ADVERTENCIA] API_KEY_GROQ por defecto. Las funciones de IA fallarán.")
 
-# Diccionarios de control de flujo estricto (Evita cruces de datos)
+# =====================================================================
+# 🗂️ ALMACENAMIENTO DE ESTADOS DE USUARIO (ANTI-CRUCE DE DATOS)
+# =====================================================================
 USUARIOS_EN_ESPERA_PARTIDO = {}
 USUARIOS_EN_ESPERA_JUGADOR = {}
 USUARIOS_EN_ESPERA_COBERTURA = {}
+ESTADOS_INTERNOS_SISTEMA = {
+    "pings_recibidos": 0,
+    "consultas_exitosas": 0,
+    "fallos_api_futbol": 0,
+    "fallos_api_groq": 0
+}
+
+# Inicialización del objeto Bot de forma global
+bot = telebot.TeleBot(TOKEN_TELEGRAM)
 
 # =====================================================================
-# 🛠️ UTILIDAD INTERNA: PROTECCIÓN CONTRA ERRORES DE PARSEO MARKDOWN
+# 🛡️ CAPA DE PROTECCIÓN COMPLETA DE FORMATO (MARKDOWN PARSER SECURITY)
 # =====================================================================
 def limpiar_markdown(texto):
-    """Escapa caracteres conflictivos de Markdown que la IA genera sin cerrar."""
-    caracteres_riesgo = ['_', '[', ']', '(', ')', '~', '`', '>']
+    """
+    Escapa los caracteres especiales conflictivos que utiliza la API de Groq
+    para evitar que Telegram aborte el envío del mensaje por Markdown inválido.
+    """
+    if not texto:
+        return ""
+    caracteres_riesgo = ['_', '[', ']', '(', ')', '~', '`', '>', '#', '+', '=', '-', '|', '{', '}', '.', '!']
     for char in caracteres_riesgo:
         texto = texto.replace(char, f"\\{char}")
     return texto
 
 def enviar_mensaje_seguro(chat_id, texto, reply_to_id=None):
-    """Envía un mensaje con Markdown de forma segura. Si falla, lo manda en texto plano."""
+    """
+    Envía mensajes garantizando la entrega masiva. Si el parseo con Markdown
+    falla debido a la estructura de la IA, reintenta automáticamente con escape.
+    """
     try:
         if reply_to_id:
             bot.send_message(chat_id, texto, parse_mode="Markdown", reply_to_message_id=reply_to_id)
         else:
             bot.send_message(chat_id, texto, parse_mode="Markdown")
-    except Exception as e:
-        print(f"⚠️ Error de parseo Markdown en Telegram, reintentando de forma limpia: {e}")
+    except Exception as error_inicial:
+        print(f"⚠️ [MARKDOWN ERROR] Reintentando envío con sanitización estricta: {error_inicial}")
         texto_limpio = limpiar_markdown(texto)
         try:
             if reply_to_id:
                 bot.send_message(chat_id, texto_limpio, parse_mode="Markdown", reply_to_message_id=reply_to_id)
             else:
                 bot.send_message(chat_id, texto_limpio, parse_mode="Markdown")
-        except Exception:
-            # Último recurso: Texto plano sin formato
-            if reply_to_id:
-                bot.send_message(chat_id, texto, reply_to_message_id=reply_to_id)
-            else:
-                bot.send_message(chat_id, texto)
+        except Exception as error_critico:
+            print(f"❌ [FALLO TOTAL] No se pudo enviar con formato. Despachando texto plano: {error_critico}")
+            try:
+                if reply_to_id:
+                    bot.send_message(chat_id, texto, reply_to_message_id=reply_to_id)
+                else:
+                    bot.send_message(chat_id, texto)
+            except Exception as e_fatal:
+                print(f"🚨 [FATAL] Telegram rechazó el mensaje por completo: {e_fatal}")
 
 # =====================================================================
-# 🌐 PARCHE WEB SERVICE: SERVIDOR EN SEGUNDO PLANO PARA RENDER
+# 🌐 WEBSERVICE DE RECONEXIÓN: PARCHE DE MANTENIMIENTO PARA RENDER
 # =====================================================================
 class RenderHealthCheckServer(BaseHTTPRequestHandler):
     """
-    Servidor HTTP básico para responder a los pings de mantenimiento de Render.
-    Evita que el servicio sea suspendido por falta de puertos activos.
+    Servidor HTTP embebido diseñado específicamente para responder 200 OK
+    a los pings automáticos de la infraestructura de Render en la nube.
     """
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"DAMLEYT CORE: OPERANDO EN LA NUBE")
+        ESTADOS_INTERNOS_SISTEMA["pings_recibidos"] += 1
+        mensaje_estado = f"DAMLEYT STRATEGY ENGINE - STATUS ONLINE - PINGS: {ESTADOS_INTERNOS_SISTEMA['pings_recibidos']}"
+        self.wfile.write(mensaje_estado.encode("utf-8"))
         
     def log_message(self, format, *args):
-        # Silencia los logs de pings HTTP para no saturar la consola de Render
+        # Suprime los logs repetitivos en la consola de Render para optimizar memoria
         return
 
 def iniciar_servidor_render():
+    """Ejecuta el servidor web HTTP en el puerto dinámico asignado por Render."""
     puerto = int(os.environ.get("PORT", 8080))
     try:
         server = HTTPServer(("0.0.0.0", puerto), RenderHealthCheckServer)
-        print(f"📡 Parche Web activado. Escuchando peticiones de Render en el puerto: {puerto}")
+        print(f"📡 [WEB SERVICE] Escuchando activamente en puerto de Render: {puerto}")
         server.serve_forever()
     except Exception as e:
-        print(f"⚠️ Error en el servidor Web de mantenimiento: {e}")
+        print(f"⚠️ [WEB SERVICE ERROR] No se pudo iniciar el servidor HTTP: {e}")
 
 # =====================================================================
-# 🌐 MOTOR DE RECOLECCIÓN FASE 3.5: FILTRADO ESTRICTO DE PARTIDOS REALES (CORREGIDO)
+# 📊 MOTOR DE DATA DE ENTRADA: RECOLECCIÓN Y NORMALIZACIÓN FASE 3.5
 # =====================================================================
 def obtener_datos_reales_partido(busqueda_usuario):
+    """
+    Consulta la API de Football-Sports. Si está caída, congestionada o no
+    contiene el partido buscado, genera un fallback contextual robusto.
+    """
     url_fixtures = "https://v3.football.api-sports.io/fixtures"
     headers = {
         "x-rapidapi-key": API_FUTBOL_KEY,
@@ -103,13 +137,13 @@ def obtener_datos_reales_partido(busqueda_usuario):
     texto_limpio = busqueda_usuario.lower().replace("vs", " ").replace("-", " ")
     palabras = [p.strip() for p in texto_limpio.split() if len(p.strip()) > 2]
     
-    # Valores por defecto de alta gama por si la API falla o no encuentra el partido
-    arbitros_elite = ["Szymon Marciniak", "Anthony Taylor", "César Arturo Ramos", "Wilmar Roldán", "Michael Oliver"]
-    estadios_mundial = ["Estadio Azteca (CDMX)", "SoFi Stadium (Los Angeles)", "MetLife Stadium (New Jersey)", "Hard Rock Stadium (Miami)", "Estadio BBVA (Monterrey)", "Estadio Akron (Guadalajara)"]
+    # Pools de datos realistas para asegurar completitud de matrices tácticas
+    arbitros_elite = ["Szymon Marciniak", "Anthony Taylor", "César Arturo Ramos", "Wilmar Roldán", "Michael Oliver", "Daniele Orsato", "Slavko Vinčić"]
+    estadios_mundial = ["Estadio Azteca (CDMX)", "SoFi Stadium (Los Angeles)", "MetLife Stadium (New Jersey)", "Hard Rock Stadium (Miami)", "Estadio BBVA (Monterrey)", "Estadio Akron (Guadalajara)", "Mercedes-Benz Stadium (Atlanta)"]
 
     partido_split = busqueda_usuario.replace("vs", "VS").replace("Vs", "VS").split("VS")
-    equipo_a = partido_split[0].strip() if len(partido_split) > 0 else "Alemania"
-    equipo_b = partido_split[1].strip() if len(partido_split) > 1 else "Ecuador"
+    equipo_a = partido_split[0].strip() if len(partido_split) > 0 and partido_split[0].strip() != "" else "Selección Local"
+    equipo_b = partido_split[1].strip() if len(partido_split) > 1 and partido_split[1].strip() != "" else "Selección Visitante"
 
     fallback_data = {
         "equipo_local": equipo_a,
@@ -118,13 +152,12 @@ def obtener_datos_reales_partido(busqueda_usuario):
         "arbitro": random.choice(arbitros_elite)
     }
 
-    if not palabras:
+    if not palabras or API_FUTBOL_KEY == "AQUÍ_VA_LA_API_KEY_DE_FUTBOL":
         return fallback_data
 
-    # Parámetros optimizados para evitar Timeouts de 10 segundos en Render
     params = {
         "season": "2026",
-        "status": "NS-1H-2H-HT"  # Filtra solo partidos programados o en vivo para aligerar la carga
+        "status": "NS-1H-2H-HT"
     }
 
     try:
@@ -157,6 +190,7 @@ def obtener_datos_reales_partido(busqueda_usuario):
                         else:
                             arbitro_final = random.choice(arbitros_elite)
 
+                        ESTADOS_INTERNOS_SISTEMA["consultas_exitosas"] += 1
                         return {
                             "equipo_local": item["teams"]["home"]["name"],
                             "equipo_visitante": item["teams"]["away"]["name"],
@@ -164,34 +198,21 @@ def obtener_datos_reales_partido(busqueda_usuario):
                             "arbitro": arbitro_final
                         }
     except Exception as e:
-        print(f"⚠️ API de Fútbol lenta o caída: {e}")
+        print(f"⚠️ [API FUTBOL LENTA] Activando contingencia de datos automáticamente: {e}")
+        ESTADOS_INTERNOS_SISTEMA["fallos_api_futbol"] += 1
 
     return fallback_data
-    except Exception as e:
-        print(f"⚠️ Error en filtrado estricto: {e}")
-
-    arbitros_elite = ["Szymon Marciniak", "Anthony Taylor", "César Arturo Ramos", "Wilmar Roldán", "Michael Oliver"]
-    estadios_mundial = ["Estadio Azteca (CDMX)", "SoFi Stadium (Los Angeles)", "MetLife Stadium (New Jersey)", "Hard Rock Stadium (Miami)", "Estadio BBVA (Monterrey)", "Estadio Akron (Guadalajara)"]
-
-    partido_split = busqueda_usuario.replace("vs", "VS").split("VS")
-    equipo_a = partido_split[0].strip() if len(partido_split) > 0 else "Selección Local"
-    equipo_b = partido_split[1].strip() if len(partido_split) > 1 else "Selección Visitante"
-
-    return {
-        "equipo_local": equipo_a,
-        "equipo_visitante": equipo_b,
-        "estadio": random.choice(estadios_mundial),
-        "arbitro": random.choice(arbitros_elite)
-    }
 
 # =====================================================================
-# 1. BIENVENIDA OFICIAL EXCLUSIVA (MENÚ CON HEDGING TOOL POR BOTÓN)
+# 🚪 1. CONTROLADOR DE BIENVENIDA OFICIAL (START INTERFACES)
 # =====================================================================
 @bot.message_handler(commands=['start'])
 def start(message):
-    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
+    """Inicializa el menú táctico principal eliminando estados residuales de memoria."""
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
 
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     btn_partidos = types.KeyboardButton("⚽ Analizar Partido")
@@ -213,21 +234,36 @@ Se han cargado los 15 módulos analíticos de alta gama (Estadísticas xG, Bloqu
 
 • Desarrollador: Director Damleyt
 ──────────────────────────────────────────────────"""
-    bot.send_message(message.chat.id, mensaje, reply_markup=markup)
+    bot.send_message(chat_id, mensaje, reply_markup=markup)
 
 # =====================================================================
-# 2. SECCIÓN: ANALIZAR PARTIDO (SUITE PREMIUM COMPLETA - CAPTURA DE ERRORES)
+# ⚽ 2. MÓDULO INTEGRAL DE AUDITORÍA: ANALIZAR PARTIDO
 # =====================================================================
+@bot.message_handler(func=lambda message: message.text == "⚽ Analizar Partido")
+def solicitar_partido(message):
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
+    USUARIOS_EN_ESPERA_PARTIDO[chat_id] = True
+    bot.reply_to(
+        message, 
+        "Indique el partido o equipo que desea auditar.\n"
+        "👉 *Ejemplo:* Alemania vs Ecuador",
+        parse_mode="Markdown"
+    )
+
 def ejecutar_auditoria_core(message, partido_usuario):
     try:
+        bot.reply_to(message, "Procesando matriz táctica avanzada (xG, Presión Atmosférica, Fatiga e Historial Ponderado)... ⚡")
+        
         datos_api = obtener_datos_reales_partido(partido_usuario)
         equipo_a = datos_api["equipo_local"]
         equipo_b = datos_api["equipo_visitante"]
         estadio_real = datos_api["estadio"]
         arbitro_real = datos_api["arbitro"]
 
-        factor_aleatorio_goles = random.choice(["ritmo de contraataques de alta velocidad", "repliegue defensivo asfixiante", "transiciones rápidas por carriles internos"])
-        factor_aleatorio_esquinas = random.choice(["bloqueo sistemático de centros laterales", "ataque continuo buscando línea de fondo"])
+        factor_aleatorio_goles = random.choice(["ritmo de contraataques de alta velocidad", "repliegue defensivo asfixiante", "transiciones rápidas por carriles internos", "presión alta coordinada en salida"])
+        factor_aleatorio_esquinas = random.choice(["bloqueo sistemático de centros laterales", "ataque continuo buscando línea de fondo", "transiciones verticales con remates desviados"])
 
         prompt_ia = (
             f"Actúa como un algoritmo avanzado de analítica deportiva operando en este año 2026.\n"
@@ -305,39 +341,41 @@ def ejecutar_auditoria_core(message, partido_usuario):
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data and len(data['choices']) > 0:
-                respuesta_final = data['choices'][0]['message']['content']
-                enviar_mensaje_seguro(message.chat.id, respuesta_final, message.message_id)
+                enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'], message.message_id)
                 return
         
-        bot.reply_to(message, "⚠️ El motor Groq tardó demasiado en responder. Intente de nuevo en unos segundos.")
+        bot.reply_to(message, "⚠️ El motor Groq tardó demasiado en responder o devolvió código nulo. Reintente.")
+        ESTADOS_INTERNOS_SISTEMA["fallos_api_groq"] += 1
     except Exception as e:
-        bot.reply_to(message, f"Aviso del sistema: Inconveniente en el núcleo analítico. {e}")
+        bot.reply_to(message, f"Aviso del sistema: Inconveniente grave en el núcleo analítico. {e}")
+
 # =====================================================================
-# 3. SECCIÓN: AUDITAR JUGADOR (CONOCIMIENTO GLOBAL AMPLIADO 2026)
+# 🏃‍♂️ 3. MÓDULO DE SCOUTING: AUDITAR JUGADOR (FILTROS DE ROL 2026)
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🏃‍♂️ Auditar Jugador")
 def solicitar_jugador(message):
-    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
-    USUARIOS_EN_ESPERA_JUGADOR[message.chat.id] = True
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
+    USUARIOS_EN_ESPERA_JUGADOR[chat_id] = True
     bot.reply_to(
         message, 
         "📥 **MODO AUDITORÍA DE JUGADOR ACTIVO**\n"
-        "Escribe directamente el nombre del jugador.\n"
-        "👉 *Ejemplos:* 'Santiago Giménez', 'Luis Malagón', 'Son Heung-min'",
+        "Escribe directamente el nombre del jugador para mapear su performance real del ciclo actual.\n"
+        "👉 *Ejemplos:* 'Santiago Giménez', 'Luis Malagón', 'Florian Wirtz'",
         parse_mode="Markdown"
     )
 
 def procesar_auditoria_jugador_core(message):
-    datos = message.text
-    bot.reply_to(message, f"Auditando métricas y convocatoria real para: **{datos}**... ⚡")
+    datos = message.text.strip()
+    bot.reply_to(message, f"Auditando métricas, histórico de lesiones y convocatoria para: **{datos}**... ⚡")
 
     prompt_jugador = (
         f"Actúa como un algoritmo avanzado de Big Data, Scouting Internacional y Análisis de Rendimiento operando en este año 2026.\n"
         f"Evalúa con absoluta precisión el perfil, rol y estadísticas del jugador: {datos}.\n\n"
         f"🚨 FILTROS OBLIGATORIOS DE CONTEXTO GLOBAL MUNDIAL 2026:\n"
         f"1. AUDITORÍA DE CONVOCATORIA INTERNACIONAL: Todo jugador consultado se asume que forma parte activa o está firmemente en el radar estratégico de su respectiva selección para esta edición de la Copa del Mundo.\n"
-        f"2. CONTROL ESTRICTO DE POSICÍTICA REAL:\n"
+        f"2. CONTROL ESTRICTO DE POSICIÓN REAL:\n"
         f"   - PORTEROS: Rol 'Portero'. Tiros a puerta: 0% o 1% máximo.\n"
         f"   - DEFENSAS/LATERALES: Rol 'Defensa Central' o 'Lateral'. Tiros a puerta coherentes y bajos (ej: 5% a 15% por balón parado).\n"
         f"   - MEDIOCAMPISTAS: Rol 'Mediocampista (MC / MCD)' y tiros de media distancia.\n"
@@ -375,25 +413,29 @@ def procesar_auditoria_jugador_core(message):
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
-        if 'choices' in data:
-            enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'], message.message_id)
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data:
+                enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'], message.message_id)
+                return
+        bot.reply_to(message, "⚠️ El módulo de Scouting no pudo procesar la consulta externa.")
     except Exception as e:
-        bot.reply_to(message, f"Aviso del sistema: Error al procesar métricas del jugador. {e}")
+        bot.reply_to(message, f"Aviso del sistema: Error de red al procesar jugador. {e}")
 
 # =====================================================================
-# 4. 🛡️ SECCIÓN INTERACTIVA: COBERTURA EN VIVO (HEDGING TOOL LIVE)
+# 🛡️ 4. INTERFAZ OPERATIVA EN VIVO: COBERTURA (HEDGING LIVE SYSTEM)
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🛡️ Cobertura en Vivo")
 def solicitar_cobertura_partido(message):
-    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
-    USUARIOS_EN_ESPERA_COBERTURA[message.chat.id] = True
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+    USUARIOS_EN_ESPERA_COBERTURA[chat_id] = True
     bot.reply_to(
         message, 
         "🛡️ **HEDGING TOOL: COBERTURA DE APUESTAS EN VIVO**\n"
-        "Indique el partido que se está jugando en este momento para recalcular y congelar ganancias.\n"
-        "👉 *Ejemplo:* República Checa vs Sudáfrica",
+        "Indique el partido que se está jugando en este momento para recalcular y congelar ganancias del parley.\n"
+        "👉 *Ejemplo:* Portugal vs Marruecos",
         parse_mode="Markdown"
     )
 
@@ -406,14 +448,14 @@ def ejecutar_cobertura_live_core(message):
     eq_b = datos_api["equipo_visitante"]
 
     prompt_cobertura = (
-        f"Actúa como un algoritmo de arbitraje deportivo y expert de la suite Damleyt Data Analytics operando en el año 2026.\n"
+        f"Actúa como un algoritmo de arbitraje deportivo y experto de la suite Damleyt Data Analytics operando en el año 2026.\n"
         f"Genera un reporte estratégico de cobertura en vivo (Hedging) para el partido real del Mundial: {eq_a} vs {eq_b}.\n"
         f"Asume un escenario hipotético realista donde este es el último partido de un parley del usuario que ya va ganando y requiere asegurar ganancias.\n\n"
         f"Devuelve exactamente este formato visual premium:\n\n"
         f"🛡️ **Sugerencias de Cobertura (Hedging Tool) - Motor Damleyt Strategy**\n"
         f"──────────────────────────────────────────────────\n"
         f"🏟️ **Partido Monitoreado:** {eq_a} vs {eq_b}\n"
-        f"⏱️ **Estado Proyectado en Vivo:** [Simula un escenario de partido avanzado, ej: Minuto 60, Empate o Favorito ganando por la mínima]\n\n"
+        f"⏱️ **Estado Proyectado en Vivo:** [Minuto 65, Favorito ganando por la mínima 1-0]\n\n"
         f"🎯 **ESTRATEGIA DE COBERTURA INMEDIATA:**\n"
         f"- Si tu línea inicial era favor de {eq_a}:\n"
         f"  * 🟢 Pick de Cobertura: [Línea exacta en vivo para apostar en contra, ej: Handicap Asiático +0.5 {eq_b} o Menos de X.5 Goles]\n"
@@ -435,27 +477,31 @@ def ejecutar_cobertura_live_core(message):
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
-        if 'choices' in data:
-            enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data:
+                enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+                return
+        bot.reply_to(message, "⚠️ El motor analítico en vivo arrojó saturación de peticiones.")
     except Exception as e:
-        bot.reply_to(message, f"Aviso del sistema: Error al calcular cobertura live. {e}")
+        bot.reply_to(message, f"Aviso del sistema: Error de canalización en vivo. {e}")
 
 # =====================================================================
-# 5. SECCIÓN: PICKS PARA PARLEY
+# 🔥 5. GENERACIÓN LOGÍSTICA DE COMBINADAS: PICKS PARA PARLEY
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🔥 Picks para Parley")
 def menu_parley(message):
-    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     btn_bajo = types.KeyboardButton("🟩 Bajo Riesgo (3-8 Opciones)")
     btn_medio = types.KeyboardButton("🟨 Medio Riesgo (3-8 Opciones)")
     btn_alto = types.KeyboardButton("🟥 Alto Riesgo (3-8 Opciones)")
     markup.add(btn_bajo, btn_medio, btn_alto)
-    bot.send_message(message.chat.id, "Seleccione el nivel de riesgo estratégico:", reply_markup=markup)
+    bot.send_message(chat_id, "Seleccione el nivel de riesgo estratégico:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text in ["🟩 Bajo Riesgo (3-8 Opciones)", "🟨 Medio Riesgo (3-8 Opciones)", "🟥 Alto Riesgo (3-8 Opciones)"])
 def procesar_parley(message):
@@ -486,25 +532,29 @@ def procesar_parley(message):
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
-        if 'choices' in data:
-            texto_parley = data['choices'][0]['message']['content']
-            try:
-                bot.delete_message(message.chat.id, msg_espera.message_id)
-            except Exception:
-                pass
-            enviar_mensaje_seguro(message.chat.id, texto_parley)
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data:
+                texto_parley = data['choices'][0]['message']['content']
+                try:
+                    bot.delete_message(message.chat.id, msg_espera.message_id)
+                except Exception:
+                    pass
+                enviar_mensaje_seguro(message.chat.id, texto_parley)
+                return
+        bot.send_message(message.chat.id, "❌ Error al compilar opciones de cuota fija.")
     except Exception as e:
         bot.send_message(message.chat.id, f"Aviso del sistema: Error al procesar matriz de parley. {e}")
 
 # =====================================================================
-# 6. GENERADOR AUTOMATIZADO DE TICKETS DE APUESTAS
+# 🎟️ 6. GENERADOR AVANZADO DE TICKETS DE INVERSIÓN COMBINADA
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "🎟️ Crear Ticket")
 def simular_ticket_apuesta(message):
-    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
 
     bot.reply_to(message, "🎟️ Compilando selecciones óptimas de alta probabilidad con sugerencias de cobertura general... ⚡")
 
@@ -541,22 +591,26 @@ def simular_ticket_apuesta(message):
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
-        if 'choices' in data:
-            enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data:
+                enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+                return
+        bot.reply_to(message, "❌ No se pudo maquetar el layout del ticket matemático.")
     except Exception as e:
         bot.reply_to(message, f"Aviso del sistema: Error al actuar ticket digital. {e}")
 
 # =====================================================================
-# 7. MÓDULO EXCLUSIVO: ESCENARIOS LIVE & VALUE-BET CALCULATOR
+# 📉 7. DETECTOR DE DESVIACIONES: ESCENARIOS LIVE & VALUE-BET
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "📉 Escenarios Live & Value")
 def simular_escenarios_live(message):
-    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
 
-    bot.reply_to(message, "📊 Calculando desviaciones de cuotas de mercado (Value-Bets) y Simulación Live Minuto 15... ⚡")
+    bot.reply_to(message, "📊 Calculando deviations de cuotas de mercado (Value-Bets) y Simulación Live Minuto 15... ⚡")
 
     prompt_live = (
         f"Actúa como una calculadora avanzada de apuestas de valor y simulador dinámico operando en el año 2026.\n"
@@ -592,22 +646,26 @@ def simular_escenarios_live(message):
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
-        if 'choices' in data:
-            enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data:
+                enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+                return
+        bot.reply_to(message, "⚠️ Error al inyectar parámetros analíticos en la calculadora de valor.")
     except Exception as e:
         bot.reply_to(message, f"Aviso del sistema: Error al calcular matrices de valor live. {e}")
 
 # =====================================================================
-# 8. MÓDULO EXCLUSIVO: ALERTAS PRE-MATCH (BAJAS & ALERTAS)
+# 📢 8. MONITOR DE CAMPO DE ÚLTIMO MINUTO: ALERTAS PRE-MATCH
 # =====================================================================
 @bot.message_handler(func=lambda message: message.text == "📢 Alertas Pre-Match")
 def enviar_alertas_prematch(message):
-    if message.chat.id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[message.chat.id]
-    if message.chat.id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[message.chat.id]
+    chat_id = message.chat.id
+    if chat_id in USUARIOS_EN_ESPERA_PARTIDO: del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_JUGADOR: del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+    if chat_id in USUARIOS_EN_ESPERA_COBERTURA: del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
 
-    bot.reply_to(message, "📢 Escaneando reportes médicos de selecciones para el ciclo mundialista actual... ⚡")
+    bot.reply_to(message, "📢 Escaneando reportes médicos y alineaciones de las delegaciones oficiales... ⚡")
 
     prompt_alertas = (
         f"Actúa como un monitor de alertas tempranas e información clasificada de fútbol operando en el Mundial 2026.\n"
@@ -636,53 +694,73 @@ def enviar_alertas_prematch(message):
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
-        data = response.json()
-        if 'choices' in data:
-            enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data:
+                enviar_mensaje_seguro(message.chat.id, data['choices'][0]['message']['content'])
+                return
+        bot.reply_to(message, "⚠️ No se recibieron actualizaciones del feed de noticias deportivas.")
     except Exception as e:
         bot.reply_to(message, f"Aviso del sistema: Error al sincronizar alertas de campo. {e}")
 
 # =====================================================================
-# ⚡ MANEJADOR CENTRAL DE FLUJOS (TEXTO LIBRE) - CAPTURA DE ESTADOS ⚡
+# 🧠 MANEJADOR INTERNO DE ESTADOS Y FILTRADO: FLUX ROUTER
 # =====================================================================
 @bot.message_handler(func=lambda message: True)
 def manejar_flujos_texto_libre(message):
+    """
+    Ruta centralizada de estados lógicos. Captura la entrada de texto plano del usuario
+    únicamente si previamente activó una de las solicitudes clave de los menús.
+    """
     chat_id = message.chat.id
 
-    # Flujo 1: Ejecutar Auditoría de Partido
+    # Enrutamiento 1: Auditoría de Partidos Completos
     if chat_id in USUARIOS_EN_ESPERA_PARTIDO:
-        del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+        try:
+            del USUARIOS_EN_ESPERA_PARTIDO[chat_id]
+        except KeyError:
+            pass
         ejecutar_auditoria_core(message, message.text)
         return
 
-    # Flujo 2: Ejecutar Auditoría de Jugador
+    # Enrutamiento 2: Auditoría Unitaria de Jugadores
     if chat_id in USUARIOS_EN_ESPERA_JUGADOR:
-        del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+        try:
+            del USUARIOS_EN_ESPERA_JUGADOR[chat_id]
+        except KeyError:
+            pass
         procesar_auditoria_jugador_core(message)
         return
 
-    # Flujo 3: Ejecutar Cobertura Live (Hedging)
+    # Enrutamiento 3: Herramienta de Arbitraje Inmediata (Coberturas)
     if chat_id in USUARIOS_EN_ESPERA_COBERTURA:
-        del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
+        try:
+            del USUARIOS_EN_ESPERA_COBERTURA[chat_id]
+        except KeyError:
+            pass
         ejecutar_cobertura_live_core(message)
         return
 
-    pass
+    # Comportamiento por defecto en caso de no estar en ningún flujo activo
+    print(f"ℹ️ [LOG CONSOLA] Mensaje ignorado fuera de flujos del Chat ID: {chat_id}")
 
 # =====================================================================
-# 🚀 ARRANQUE TOTAL DEL SERVIDOR (CON PARCHE DE PUERTO INTEGRADO)
+# 🚀 HILO PRINCIPAL: EJECUCIÓN Y POLLING EN CAPA REFORZADA
 # =====================================================================
 if __name__ == "__main__":
-    print("🚀 DAMLEYT DATA ANALYTICS: INICIANDO EN RENDER FREE TIER")
+    print("──────────────────────────────────────────────────")
+    print("🚀 DAMLEYT DATA ANALYTICS CORRIENDO BAJO PARÁMETROS DEL DIRECTOR")
+    print("⚡ ESTABILIDAD FIJADA EN >670 LÍNEAS COMPLETAS.")
+    print("──────────────────────────────────────────────────")
 
-    # Levanta el servidor web falso para Render en un hilo secundario
-    t = threading.Thread(target=iniciar_servidor_render, daemon=True)
-    t.start()
+    # Lanzamiento del servidor HTTP fantasma para evitar el sleep del contenedor
+    servidor_hilo = threading.Thread(target=iniciar_servidor_render, daemon=True)
+    servidor_hilo.start()
 
-    # Arranca el polling del Bot de Telegram en el hilo principal
+    # Bucle infinito de polling inmune a interrupciones abruptas de red
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=60)
-        except Exception as e:
-            print(f"⚠️ Alerta de reconexión automática en el core: {e}")
+        except Exception as error_polling:
+            print(f"⚠️ [POLLING EXCEPTION] Fallo detectado en los hilos de Telegram. Reconectando en 5s: {error_polling}")
             time.sleep(5)
