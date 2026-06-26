@@ -25,7 +25,7 @@ TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "8945180693:AAFjuRXWutokv3a
 API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "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"
 API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "1589324158msh59fc26e7a7aad35p1ec314jsn40a77ef790e1"
 
-# Validación de seguridad de credenciales en consola
+# Validation de seguridad de credenciales en consola
 if TOKEN_TELEGRAM == "AQUÍ_VA_EL_TOKEN_DE_TU_BOT":
     print("⚠️ [ADVERTENCIA] TOKEN_TELEGRAM por defecto. Configure la variable de entorno.")
 if API_KEY_GROQ == "AQUÍ_VA_LA_API_KEY_DE_GROQ":
@@ -331,13 +331,14 @@ def ejecutar_auditoria_core(message, partido_usuario):
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama3-70b-8192",  # Modelo ultra veloz y con cuotas estables en la API de Groq
             "messages": [{"role": "user", "content": prompt_ia}],
             "temperature": 0.75,
             "max_tokens": 1500
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=12)
+        # Subimos el timeout a 30 segundos para evitar cortes prematuros de conexión
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data and len(data['choices']) > 0:
@@ -371,7 +372,7 @@ def procesar_auditoria_jugador_core(message):
     bot.reply_to(message, f"Auditando métricas, histórico de lesiones y convocatoria para: **{datos}**... ⚡")
 
     prompt_jugador = (
-        f"Actúa como un algoritmo avanzado de Big Data, Scouting Internacional y Análisis de Rendimiento operando en este año 2026.\n"
+        f"Actúa como un algorithm avanzado de Big Data, Scouting Internacional y Análisis de Rendimiento operando en este año 2026.\n"
         f"Evalúa con absoluta precisión el perfil, rol y estadísticas del jugador: {datos}.\n\n"
         f"🚨 FILTROS OBLIGATORIOS DE CONTEXTO GLOBAL MUNDIAL 2026:\n"
         f"1. AUDITORÍA DE CONVOCATORIA INTERNACIONAL: Todo jugador consultado se asume que forma parte activa o está firmemente en el radar estratégico de su respectiva selección para esta edición de la Copa del Mundo.\n"
@@ -405,14 +406,14 @@ def procesar_auditoria_jugador_core(message):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama3-70b-8192",
         "messages": [{"role": "user", "content": prompt_jugador}],
         "temperature": 0.7,
         "max_tokens": 700
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data:
@@ -469,14 +470,14 @@ def ejecutar_cobertura_live_core(message):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama3-70b-8192",
         "messages": [{"role": "user", "content": prompt_cobertura}],
         "temperature": 0.7,
         "max_tokens": 700
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data:
@@ -525,13 +526,13 @@ def procesar_parley(message):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama3-70b-8192",
         "messages": [{"role": "user", "content": prompt_parley}],
         "temperature": 0.7
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data:
@@ -583,14 +584,14 @@ def simular_ticket_apuesta(message):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama3-70b-8192",
         "messages": [{"role": "user", "content": prompt_ticket}],
         "temperature": 0.7,
         "max_tokens": 800
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data:
@@ -638,14 +639,14 @@ def simular_escenarios_live(message):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama3-70b-8192",
         "messages": [{"role": "user", "content": prompt_live}],
         "temperature": 0.7,
         "max_tokens": 800
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data:
@@ -686,14 +687,14 @@ def enviar_alertas_prematch(message):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {API_KEY_GROQ}", "Content-Type": "application/json"}
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama3-70b-8192",
         "messages": [{"role": "user", "content": prompt_alertas}],
         "temperature": 0.7,
         "max_tokens": 600
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data:
