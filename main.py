@@ -21,9 +21,9 @@ from telebot import types
 # =====================================================================
 # 🔑 CONSTANTES GLOBALES Y VARIABLES DE ENTORNO (PRODUCCIÓN)
 # =====================================================================
-TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "AQUÍ_VA_EL_TOKEN_DE_TU_BOT"
-API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "AQUÍ_VA_LA_API_KEY_DE_GROQ"
-API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "AQUÍ_VA_LA_API_KEY_DE_FUTBOL"
+TOKEN_TELEGRAM = os.environ.get("TOKEN_TELEGRAM") or "8945180693:AAFjuRXWutokv3a7pwAQakXGQ9a-teAg_iI"
+API_KEY_GROQ = os.environ.get("API_KEY_GROQ") or "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"
+API_FUTBOL_KEY = os.environ.get("API_FUTBOL_KEY") or "1589324158msh59fc26e7a7aad35p1ec314jsn40a77ef790e1"
 
 # Validación de seguridad de credenciales en consola
 if TOKEN_TELEGRAM == "AQUÍ_VA_EL_TOKEN_DE_TU_BOT":
